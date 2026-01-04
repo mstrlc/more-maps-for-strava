@@ -84,18 +84,37 @@
             if (state.window) return state.window;
             const win = document.createElement('div');
             win.id = 'strava-panorama-window';
-            win.innerHTML = `
-                <div id="strava-panorama-drag-handle"></div>
-                <button id="strava-panorama-close" title="${STRINGS.PANORAMA.CLOSE_TOOLTIP}">×</button>
-                <div id="strava-panorama-content">
-                    <div id="strava-panorama-loading">
-                        <div class="pano-spinner"></div>
-                        <div>${STRINGS.PANORAMA.LOADING}</div>
-                    </div>
-                </div>
-            `;
+
+            const handle = document.createElement('div');
+            handle.id = 'strava-panorama-drag-handle';
+
+            const closeBtn = document.createElement('button');
+            closeBtn.id = 'strava-panorama-close';
+            closeBtn.title = STRINGS.PANORAMA.CLOSE_TOOLTIP;
+            closeBtn.textContent = '×';
+            closeBtn.onclick = onClose;
+
+            const content = document.createElement('div');
+            content.id = 'strava-panorama-content';
+
+            const loading = document.createElement('div');
+            loading.id = 'strava-panorama-loading';
+
+            const spinner = document.createElement('div');
+            spinner.className = 'pano-spinner';
+
+            const loadingText = document.createElement('div');
+            loadingText.textContent = STRINGS.PANORAMA.LOADING;
+
+            loading.appendChild(spinner);
+            loading.appendChild(loadingText);
+            content.appendChild(loading);
+
+            win.appendChild(handle);
+            win.appendChild(closeBtn);
+            win.appendChild(content);
+
             document.body.appendChild(win);
-            win.querySelector('#strava-panorama-close').onclick = onClose;
 
             ['t', 'l', 'tl'].forEach(side => {
                 const h = document.createElement('div');
@@ -123,12 +142,25 @@
             if (viewer) viewer.style.display = 'none';
 
             loading.style.display = 'flex';
-            loading.innerHTML = `
-                <div style="padding: 24px;">
-                    <div style="font-weight:700; color:#fc4c02; margin-bottom:8px;">${msg.title || STRINGS.PANORAMA.ERROR_TITLE}</div>
-                    <div style="font-size:13px; color:white; font-weight:500;">${msg.text}</div>
-                </div>
-            `;
+
+            // Clear existing loading content
+            while (loading.firstChild) loading.removeChild(loading.firstChild);
+
+            const errorDiv = document.createElement('div');
+            errorDiv.style.padding = '24px';
+
+            const title = document.createElement('div');
+            title.style.cssText = 'font-weight:700; color:#fc4c02; margin-bottom:8px;';
+            title.textContent = msg.title || STRINGS.PANORAMA.ERROR_TITLE;
+
+            const text = document.createElement('div');
+            text.style.cssText = 'font-size:13px; color:white; font-weight:500;';
+            text.textContent = msg.text;
+
+            errorDiv.appendChild(title);
+            errorDiv.appendChild(text);
+            loading.appendChild(errorDiv);
+
             state.window.classList.add('error-state');
         }
     };
@@ -142,16 +174,48 @@
             const el = document.createElement('div');
             el.style.cssText = 'position:absolute; transform:translate(-50%, -50%); z-index:1; pointer-events:none;';
             const deg = (yaw * 180 / Math.PI);
-            el.innerHTML = `
-                <svg viewBox="0 0 32 32" width="32" height="32" style="overflow:visible;">
-                    <filter id="marker-shadow"><feDropShadow dx="0" dy="1.5" stdDeviation="1.5" flood-opacity="0.5"/></filter>
-                    <g transform="translate(16, 16)" filter="url(#marker-shadow)">
-                        <g class="rot" style="transform: rotate(${deg}deg); transition: transform 0.1s ease-out;">
-                            <path d="M 0 -15 L 7 -5.6 A 9 9 0 1 1 -7 -5.6 Z" fill="#FC4C02" stroke="white" stroke-width="2.5" stroke-linejoin="round" />
-                        </g>
-                    </g>
-                </svg>
-            `;
+
+            const svgNS = "http://www.w3.org/2000/svg";
+            const svg = document.createElementNS(svgNS, "svg");
+            svg.setAttribute("viewBox", "0 0 32 32");
+            svg.setAttribute("width", "32");
+            svg.setAttribute("height", "32");
+            svg.style.overflow = "visible";
+
+            // Create filter
+            const filter = document.createElementNS(svgNS, "filter");
+            filter.setAttribute("id", "marker-shadow");
+            const dropShadow = document.createElementNS(svgNS, "feDropShadow");
+            dropShadow.setAttribute("dx", "0");
+            dropShadow.setAttribute("dy", "1.5");
+            dropShadow.setAttribute("stdDeviation", "1.5");
+            dropShadow.setAttribute("flood-opacity", "0.5");
+            filter.appendChild(dropShadow);
+            svg.appendChild(filter);
+
+            // Create main group
+            const gMain = document.createElementNS(svgNS, "g");
+            gMain.setAttribute("transform", "translate(16, 16)");
+            gMain.setAttribute("filter", "url(#marker-shadow)");
+
+            // Create rotation group
+            const gRot = document.createElementNS(svgNS, "g");
+            gRot.className.baseVal = "rot";
+            gRot.style.transform = `rotate(${deg}deg)`;
+            gRot.style.transition = "transform 0.1s ease-out";
+
+            // Create path
+            const path = document.createElementNS(svgNS, "path");
+            path.setAttribute("d", "M 0 -15 L 7 -5.6 A 9 9 0 1 1 -7 -5.6 Z");
+            path.setAttribute("fill", "#FC4C02");
+            path.setAttribute("stroke", "white");
+            path.setAttribute("stroke-width", "2.5");
+            path.setAttribute("stroke-linejoin", "round");
+
+            gRot.appendChild(path);
+            gMain.appendChild(gRot);
+            svg.appendChild(gMain);
+            el.appendChild(svg);
 
             const container = map.getCanvasContainer ? map.getCanvasContainer() : (map.getContainer ? map.getContainer() : document.querySelector('.mapboxgl-map'));
             if (container) container.appendChild(el);

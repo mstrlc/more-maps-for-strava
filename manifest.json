@@ -5,7 +5,13 @@
     "description": "Adds additional map options to Strava.",
     "browser_specific_settings": {
         "gecko": {
-            "id": "strava-more-maps@mstrlc.eu"
+            "id": "strava-more-maps@mstrlc.eu",
+            "strict_min_version": "142.0",
+            "data_collection_permissions": {
+                "required": [
+                    "none"
+                ]
+            }
         }
     },
     "icons": {
