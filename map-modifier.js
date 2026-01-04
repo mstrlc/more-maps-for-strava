@@ -1,0 +1,738 @@
+/**
+ * Strava More Maps - Map Modifier Script
+ * 
+ * Injects the content script and manages the UI integration with Strava's map controller.
+ */
+
+// Inject scripts using the same pattern as strava-map-switcher
+// This ensures they run in the page context, not the content script context
+{
+    const injectPageScript = (filename) => {
+        return new Promise((resolve) => {
+            const s = document.createElement('script');
+            s.src = chrome.runtime.getURL(filename);
+            s.type = 'text/javascript';
+            s.onload = resolve;
+            (document.body || document.documentElement).appendChild(s);
+        });
+    };
+
+    const injectStyles = async () => {
+        if (!document.body) {
+            setTimeout(injectStyles, 10);
+            return;
+        }
+
+        const style = document.createElement('style');
+        style.textContent = `
+            .${SELECTORS.SELECTED_CLASS} span {
+                font-weight: 700 !important;
+            }
+        `;
+        document.head.appendChild(style);
+
+        // Inject sequentially
+        await injectPageScript('constants.js');
+        await injectPageScript('strings.js');
+        await injectPageScript('panorama.js');
+        await injectPageScript('inject.js');
+    };
+
+    injectStyles();
+}
+
+const SELECTORS = {
+    CONTAINER: '.MapDisplayControl_options__6iIQA',
+    BUTTON: 'MapDisplayControl_optionButton___nsae',
+    IMAGE: 'MapDisplayControl_option__KwK84',
+    TEXT: ['element_body1__VB3SZ', 'element_fontSize2xs__tRJQR'],
+    SELECTED_CLASS: 'MapDisplayControl_selected__tEGV8',
+    NAV_MENU: '.react-horizontal-scrolling-menu--scroll-container'
+};
+
+const MAP_OPTIONS = [
+    { id: 'mapycz-regular', label: 'Standard', img: 'assets/mapycom/standard.png' },
+    { id: 'mapycz-outdoor', label: 'Outdoor', img: 'assets/mapycom/outdoor.png' },
+    { id: 'mapycz-winter', label: 'Winter', img: 'assets/mapycom/winter.png' },
+    { id: 'mapycz-satellite', label: 'Satellite', img: 'assets/mapycom/satellite.png' }
+];
+
+const OSM_OPTIONS = [
+    { id: 'osm-regular', label: 'Standard', img: 'assets/osm/standard.png' },
+    { id: 'osm-cyclosm', label: 'CyclOSM', img: 'assets/osm/cyclosm.png' },
+    { id: 'osm-cycle', label: 'Cycle Map', img: 'assets/osm/cycle.png' }
+];
+
+let activeMapId = null;
+let panoramaButtonInjected = false;
+let isPanoramaActive = false;
+let panoramaButtonEl = null;
+let panoramaEyeIcon = null;
+let panoramaXIcon = null;
+
+// Listen for messages from the page context
+window.addEventListener('message', (event) => {
+    if (event.source !== window || !event.data) return;
+
+    if (event.data.type === 'STRAVA_PANORAMA_TOGGLE') {
+        const active = event.data.active;
+        if (active !== isPanoramaActive) {
+            // Check for API key if activating panorama
+            if (active) {
+                const apiKey = localStorage.getItem('strava_more_maps_mapy_api_key');
+                if (!apiKey) {
+                    showSettingsModal(true); // Show with instructions
+                    return; // Don't activate panorama yet
+                }
+            }
+            updatePanoramaUI(active);
+        }
+    } else if (event.data.type === 'STRAVA_OPEN_SETTINGS') {
+        showSettingsModal();
+    }
+});
+
+function updatePanoramaUI(active) {
+    isPanoramaActive = active;
+    if (!panoramaButtonEl) return;
+
+    if (isPanoramaActive) {
+        panoramaButtonEl.style.color = '#fc4c02';
+        panoramaButtonEl.style.backgroundColor = '#e6e6e6';
+    } else {
+        panoramaButtonEl.style.color = '';
+        panoramaButtonEl.style.backgroundColor = '';
+    }
+}
+
+function triggerMapSwitch(mapId) {
+    // Check for API keys if switching to a custom map
+    if (mapId.startsWith('mapycz-')) {
+        const apiKey = localStorage.getItem('strava_more_maps_mapy_api_key');
+        if (!apiKey) {
+            showSettingsModal(true);
+        }
+    } else if (mapId === 'osm-cycle') {
+        const apiKey = localStorage.getItem('strava_more_maps_tf_api_key');
+        if (!apiKey) {
+            showSettingsModal(true);
+        }
+    }
+
+    activeMapId = mapId;
+    window.postMessage({
+        type: 'STRAVA_MAP_SWITCH',
+        mapType: mapId
+    }, '*');
+
+    // Update styling controls availability
+    const isCustom = [...MAP_OPTIONS, ...OSM_OPTIONS].some(opt => opt.id === mapId);
+    updateStylingControls(isCustom);
+}
+
+function updateStylingControls(enabled) {
+    const stylingSection = document.getElementById('strava-more-maps-styling-section');
+    const stylingHeader = document.getElementById('strava-more-maps-styling-header');
+
+    if (stylingSection && stylingHeader) {
+        if (enabled) {
+            stylingSection.style.opacity = '1';
+            stylingSection.style.pointerEvents = 'auto';
+            stylingHeader.style.opacity = '1';
+        } else {
+            stylingSection.style.opacity = '0.5';
+            stylingSection.style.pointerEvents = 'none';
+            stylingHeader.style.opacity = '0.5';
+        }
+    }
+}
+
+function updateButtonSelection(selectedBtn) {
+    const parent = selectedBtn.closest(`.${SELECTORS.CONTAINER.substring(1)}`) || selectedBtn.parentElement;
+    if (!parent) return;
+
+    // Deselect all buttons
+    const all = parent.querySelectorAll(`.${SELECTORS.BUTTON}`);
+    all.forEach(btn => btn.classList.remove(SELECTORS.SELECTED_CLASS));
+
+    // Select target
+    selectedBtn.classList.add(SELECTORS.SELECTED_CLASS);
+}
+
+function createButton(config) {
+    const btn = document.createElement('button');
+    btn.className = SELECTORS.BUTTON;
+    btn.dataset.mapId = config.id;
+
+    if (activeMapId === config.id) {
+        btn.classList.add(SELECTORS.SELECTED_CLASS);
+    }
+
+    const img = document.createElement('img');
+    img.alt = config.id;
+    img.src = chrome.runtime.getURL(config.img);
+    img.className = SELECTORS.IMAGE;
+    Object.assign(img.style, {
+        objectFit: 'cover'
+    });
+
+    const span = document.createElement('span');
+    span.classList.add(...SELECTORS.TEXT);
+    span.textContent = config.label;
+
+    btn.appendChild(img);
+    btn.appendChild(span);
+
+    btn.addEventListener('click', () => {
+        triggerMapSwitch(config.id);
+        updateButtonSelection(btn);
+    });
+
+    return btn;
+}
+
+/**
+ * Attaches listeners to Strava's original buttons to handle resets.
+ */
+function attachResetListeners(container) {
+    // Find buttons that are NOT ours
+    const stravaButtons = container.querySelectorAll(`.${SELECTORS.BUTTON}:not([data-map-id])`);
+
+    stravaButtons.forEach(btn => {
+        // If we have an active custom map, force Strava's button to be DESELECTED
+        if (activeMapId && activeMapId !== 'strava-default' && !MAP_OPTIONS.find(o => o.id === btn.dataset.mapId)) {
+            btn.classList.remove(SELECTORS.SELECTED_CLASS);
+        }
+
+        if (btn.dataset.resetListenerAttached) return;
+        btn.dataset.resetListenerAttached = 'true';
+
+        btn.addEventListener('click', () => {
+            triggerMapSwitch('strava-default');
+            // We only need to deselect OUR buttons visually.
+            // Strava will handle selecting its own button.
+            const myButtons = container.querySelectorAll('[data-map-id]');
+            myButtons.forEach(b => b.classList.remove(SELECTORS.SELECTED_CLASS));
+        });
+    });
+}
+
+const observer = new MutationObserver((mutations) => {
+    for (const mutation of mutations) {
+        if (mutation.type !== 'childList') continue;
+
+        mutation.addedNodes.forEach(node => {
+            if (node.nodeType !== Node.ELEMENT_NODE) return;
+
+            // Check if the added node IS the container or CONTAINS it
+            const container = node.matches(SELECTORS.CONTAINER) ? node : node.querySelector(SELECTORS.CONTAINER);
+
+            if (container) {
+                // Attach reset listeners to existing buttons
+                attachResetListeners(container);
+
+                // Inject our custom buttons if missing
+                if (!container.querySelector(`[data-map-id="${MAP_OPTIONS[0].id}"]`)) {
+
+                    // Add Section Header "Mapy.cz"
+                    // Strava uses this structure: <div class="MapDisplayControl_header__fIIDH"><span class="...">Map Styles</span></div>
+                    // We need to mimic that or just simpler text.
+                    const header = document.createElement('div');
+                    // Try to reuse Strava header class if possible, otherwise generic
+                    // "MapDisplayControl_header__fIIDH" might be unstable, let's use the one found in the page or just style it.
+                    // We can check if there is an existing header to copy classes from.
+                    const existingHeader = container.closest('.MapDisplayControl_section__jcjve')?.querySelector('[class*="MapDisplayControl_header"]');
+                    if (existingHeader) {
+                        header.className = existingHeader.className;
+                    } else {
+                        // Fallback style
+                        header.style.padding = '8px 16px 4px';
+                        header.style.fontWeight = '600';
+                        header.style.fontSize = '12px';
+                    }
+
+                    const headerSpan = document.createElement('span');
+                    if (existingHeader) {
+                        const existingSpan = existingHeader.querySelector('span');
+                        if (existingSpan) headerSpan.className = existingSpan.className;
+                    }
+                    headerSpan.textContent = 'Mapy.cz';
+                    header.appendChild(headerSpan);
+
+                    // Strava's grid doesn't really support sections INSIDE the grid (all buttons are siblings).
+                    // If we add a div here, it might break the CSS grid layout.
+                    // Strava's layout is: Section -> Header -> Options Container -> Buttons.
+                    // We are appending TO the Options Container.
+                    // If the Options Container is `display: grid`, adding a full-width header inside needs `grid-column: 1 / -1`.
+
+                    header.style.gridColumn = '1 / -1';
+                    header.style.marginTop = '12px'; // Spacing from Strava buttons
+                    header.style.marginBottom = '4px';
+
+                    container.appendChild(header);
+
+                    MAP_OPTIONS.forEach(opt => {
+                        container.appendChild(createButton(opt));
+                    });
+
+                    // Add Section Header "OpenStreetMap"
+                    const osmHeader = header.cloneNode(true);
+                    osmHeader.querySelector('span').textContent = 'OpenStreetMap';
+                    container.appendChild(osmHeader);
+
+                    OSM_OPTIONS.forEach(opt => {
+                        container.appendChild(createButton(opt));
+                    });
+
+                    // --- Visual Adjustments Section ---
+
+                    const controlsHeader = header.cloneNode(true);
+                    controlsHeader.id = 'strava-more-maps-styling-header';
+                    controlsHeader.querySelector('span').textContent = 'Map Styling';
+                    controlsHeader.style.marginTop = '16px';
+                    container.appendChild(controlsHeader);
+
+                    const controlsContainer = document.createElement('div');
+                    controlsContainer.id = 'strava-more-maps-styling-section';
+                    controlsContainer.style.gridColumn = '1 / -1';
+                    controlsContainer.style.display = 'flex';
+                    controlsContainer.style.flexDirection = 'column';
+                    controlsContainer.style.gap = '8px';
+                    controlsContainer.style.padding = '0 8px';
+
+                    // --- Opacity Slider ---
+                    const initialOpacity = localStorage.getItem('strava_more_maps_opacity') || '1';
+                    const opaLabel = document.createElement('label');
+                    opaLabel.style.display = 'flex';
+                    opaLabel.style.flexDirection = 'column';
+                    opaLabel.style.gap = '4px';
+
+                    const opaHeader = document.createElement('div');
+                    opaHeader.style.display = 'flex';
+                    opaHeader.style.justifyContent = 'space-between';
+                    opaHeader.style.alignItems = 'center';
+
+                    const opaLabelText = document.createElement('span');
+                    opaLabelText.className = 'element_body1__VB3SZ element_fontSizeXs__sfPOR element_fontWeightBook__Cmleq';
+                    opaLabelText.textContent = 'Opacity';
+
+                    const opaValueText = document.createElement('span');
+                    opaValueText.className = 'element_body1__VB3SZ element_fontSizeXs__sfPOR element_fontWeightBook__Cmleq';
+                    opaValueText.textContent = `${Math.round(parseFloat(initialOpacity) * 100)}%`;
+
+                    opaHeader.appendChild(opaLabelText);
+                    opaHeader.appendChild(opaValueText);
+
+                    const opaInput = document.createElement('input');
+                    opaInput.type = 'range';
+                    opaInput.min = '0';
+                    opaInput.max = '1';
+                    opaInput.step = '0.05';
+                    opaInput.value = initialOpacity;
+                    opaInput.style.width = '100%';
+                    opaInput.style.accentColor = '#fc4c02';
+                    opaInput.style.marginTop = '4px';
+
+                    opaInput.addEventListener('input', (e) => {
+                        const val = e.target.value;
+                        opaValueText.textContent = `${Math.round(val * 100)}%`;
+                        localStorage.setItem('strava_more_maps_opacity', val);
+                        window.postMessage({
+                            type: 'STRAVA_MAP_MOD_OPACITY',
+                            value: val
+                        }, '*');
+                    });
+
+                    opaLabel.appendChild(opaHeader);
+                    opaLabel.appendChild(opaInput);
+                    controlsContainer.appendChild(opaLabel);
+
+                    // --- Saturation Slider ---
+                    const initialSatSlider = localStorage.getItem('strava_more_maps_saturation_slider') || '1';
+                    const satLabel = document.createElement('label');
+                    satLabel.style.display = 'flex';
+                    satLabel.style.flexDirection = 'column';
+                    satLabel.style.gap = '4px';
+
+                    const satHeader = document.createElement('div');
+                    satHeader.style.display = 'flex';
+                    satHeader.style.justifyContent = 'space-between';
+                    satHeader.style.alignItems = 'center';
+
+                    const satLabelText = document.createElement('span');
+                    satLabelText.className = 'element_body1__VB3SZ element_fontSizeXs__sfPOR element_fontWeightBook__Cmleq';
+                    satLabelText.textContent = 'Saturation';
+
+                    const satValueText = document.createElement('span');
+                    satValueText.className = 'element_body1__VB3SZ element_fontSizeXs__sfPOR element_fontWeightBook__Cmleq';
+                    satValueText.textContent = `${Math.round(parseFloat(initialSatSlider) * 100)}%`;
+
+                    satHeader.appendChild(satLabelText);
+                    satHeader.appendChild(satValueText);
+
+                    const satInput = document.createElement('input');
+                    satInput.type = 'range';
+                    satInput.min = '0';
+                    satInput.max = '1';
+                    satInput.step = '0.05';
+                    satInput.value = initialSatSlider;
+                    satInput.style.width = '100%';
+                    satInput.style.accentColor = '#fc4c02';
+                    satInput.style.marginTop = '4px';
+
+                    satInput.addEventListener('input', (e) => {
+                        const val = parseFloat(e.target.value);
+                        satValueText.textContent = `${Math.round(val * 100)}%`;
+
+                        // Map 0..1 to -1..0 (Grayscale to Normal)
+                        const mapboxVal = val - 1;
+                        localStorage.setItem('strava_more_maps_saturation_slider', val);
+                        localStorage.setItem('strava_more_maps_saturation_mapbox', mapboxVal);
+
+                        window.postMessage({
+                            type: 'STRAVA_MAP_MOD_SATURATION',
+                            value: mapboxVal
+                        }, '*');
+                    });
+
+                    satLabel.appendChild(satHeader);
+                    satLabel.appendChild(satInput);
+                    controlsContainer.appendChild(satLabel);
+
+                    // Explainer Text
+                    const explainer = document.createElement('div');
+                    explainer.style.fontSize = '11px';
+                    explainer.style.color = '#888';
+                    explainer.style.marginTop = '2px';
+                    explainer.style.lineHeight = '1.3';
+                    explainer.textContent = 'Map styling only applies to "More Maps" layers.';
+                    controlsContainer.appendChild(explainer);
+
+                    container.appendChild(controlsContainer);
+
+                    // Initial state check
+                    const isCustom = [...MAP_OPTIONS, ...OSM_OPTIONS].some(opt => opt.id === activeMapId);
+                    updateStylingControls(isCustom);
+                }
+            }
+        });
+    }
+});
+
+/**
+ * Create and inject panorama button in the map control area (top-left)
+ */
+function createPanoramaButton() {
+    // Check if button already exists
+    if (panoramaButtonInjected || document.getElementById('strava-panorama-control')) {
+        return;
+    }
+
+    // Find the Mapbox control container (top-left)
+    const ctrlContainer = document.querySelector('.mapboxgl-ctrl-top-left');
+    if (!ctrlContainer) {
+        return;
+    }
+
+    // Create the control group div
+    const controlGroup = document.createElement('div');
+    controlGroup.id = 'strava-panorama-control';
+    controlGroup.className = 'mapboxgl-ctrl mapboxgl-ctrl-group';
+
+    // Create the button
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'mapboxgl-ctrl-icon';
+    btn.title = 'Panorama Mode';
+    btn.style.display = 'flex';
+    btn.style.alignItems = 'center';
+    btn.style.justifyContent = 'center';
+    btn.setAttribute('aria-label', 'Panorama Mode');
+
+    // SVG icon for panorama (eye icon)
+    const eyeIcon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    eyeIcon.setAttribute('fill', 'currentColor');
+    eyeIcon.setAttribute('viewBox', '0 0 16 16');
+    eyeIcon.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+    eyeIcon.setAttribute('width', '18');
+    eyeIcon.setAttribute('height', '18');
+
+    const eyePath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    eyePath.setAttribute('d', 'M8 3C4.5 3 1.5 5.5 0 8c1.5 2.5 4.5 5 8 5s6.5-2.5 8-5c-1.5-2.5-4.5-5-8-5zm0 8.5c-1.933 0-3.5-1.567-3.5-3.5S6.067 4.5 8 4.5s3.5 1.567 3.5 3.5-1.567 3.5-3.5 3.5zm0-5.5c-1.105 0-2 .895-2 2s.895 2 2 2 2-.895 2-2-.895-2-2-2z');
+    eyeIcon.appendChild(eyePath);
+
+    btn.appendChild(eyeIcon);
+    controlGroup.appendChild(btn);
+
+    // Toggle functionality
+    panoramaButtonEl = btn;
+    panoramaEyeIcon = eyeIcon;
+    panoramaXIcon = null;
+
+    btn.addEventListener('click', () => {
+        const newState = !isPanoramaActive;
+        updatePanoramaUI(newState);
+        window.postMessage({ type: 'STRAVA_PANORAMA_TOGGLE', active: newState }, '*');
+    });
+
+    // Prepend to top-left to be above geolocate
+    ctrlContainer.prepend(controlGroup);
+
+    panoramaButtonInjected = true;
+    console.log('Strava More Maps: Panorama control added!');
+}
+
+// --- Settings Button and Modal ---
+
+let settingsModalInjected = false;
+let settingsButtonInjected = false;
+
+function showSettingsModal(showInstructions = false) {
+    injectSettingsModal();
+    const modal = document.getElementById('strava-more-maps-settings-modal');
+    if (modal) {
+        modal.style.display = 'flex';
+        if (showInstructions) {
+            const instr = document.getElementById('strava-more-maps-api-instructions');
+            if (instr) instr.style.display = 'block';
+        }
+    }
+}
+
+function injectSettingsModal() {
+    if (settingsModalInjected || document.getElementById('strava-more-maps-settings-modal')) return;
+
+    const modal = document.createElement('div');
+    modal.id = 'strava-more-maps-settings-modal';
+    modal.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0,0,0,0.7);
+        display: none;
+        align-items: center;
+        justify-content: center;
+        z-index: 10000;
+        font-family: "Boathouse", "Noto Sans", "Segoe UI", sans-serif;
+    `;
+
+    const content = document.createElement('div');
+    content.style.cssText = `
+        background: white;
+        padding: 32px;
+        border-radius: 12px;
+        width: 450px;
+        max-width: 90%;
+        box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+        position: relative;
+    `;
+
+    const title = document.createElement('h2');
+    title.textContent = 'More Maps Settings';
+    title.style.margin = '0 0 20px 0';
+    title.style.fontSize = '24px';
+    title.style.color = '#333';
+
+    const closeBtn = document.createElement('button');
+    closeBtn.innerHTML = '&times;';
+    closeBtn.style.cssText = `
+        position: absolute;
+        top: 16px;
+        right: 16px;
+        background: none;
+        border: none;
+        font-size: 24px;
+        cursor: pointer;
+        color: #999;
+    `;
+    closeBtn.onclick = () => modal.style.display = 'none';
+
+    const label = document.createElement('label');
+    label.textContent = 'Mapy.cz API Key';
+    label.style.display = 'block';
+    label.style.marginBottom = '8px';
+    label.style.fontWeight = '600';
+    label.style.textAlign = 'left';
+
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.placeholder = 'Enter Mapy.cz API key...';
+    input.value = localStorage.getItem('strava_more_maps_mapy_api_key') || '';
+    input.style.cssText = `
+        width: 100%;
+        padding: 10px 12px;
+        border: 1px solid #ddd;
+        border-radius: 6px;
+        margin-bottom: 16px;
+        font-size: 12px;
+        font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+    `;
+
+    const labelTF = document.createElement('label');
+    labelTF.textContent = 'Thunderforest API Key (for Cycle Map)';
+    labelTF.style.display = 'block';
+    labelTF.style.marginBottom = '8px';
+    labelTF.style.fontWeight = '600';
+    labelTF.style.textAlign = 'left';
+
+    const inputTF = document.createElement('input');
+    inputTF.type = 'text';
+    inputTF.placeholder = 'Enter Thunderforest API key...';
+    inputTF.value = localStorage.getItem('strava_more_maps_tf_api_key') || '';
+    inputTF.style.cssText = `
+        width: 100%;
+        padding: 10px 12px;
+        border: 1px solid #ddd;
+        border-radius: 6px;
+        margin-bottom: 12px;
+        font-size: 12px;
+        font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+    `;
+
+    const instructions = document.createElement('div');
+    instructions.id = 'strava-more-maps-api-instructions';
+    instructions.style.cssText = `
+        font-size: 13px;
+        color: #444;
+        margin-bottom: 24px;
+        line-height: 1.5;
+        display: block;
+        background: #fdf6f4;
+        padding: 16px;
+        border-radius: 8px;
+        border-left: 4px solid #fc4c02;
+    `;
+    instructions.innerHTML = `
+        <div style="font-weight:700;margin-bottom:8px;color:#fc4c02;">API Keys Required (Free Tiers Available)</div>
+        To enable all features, please obtain free API keys from:
+        <ul style="margin:10px 0 0 18px;padding:0;">
+            <li style="margin-bottom:6px;"><strong>Mapy.cz</strong> (Panorama & Standard): <a href="https://developer.mapy.com/account/projects" target="_blank" style="color:#fc4c02;text-decoration:none;font-weight:600;">developer.mapy.com</a></li>
+            <li><strong>Thunderforest</strong> (Cycle Map): <a href="https://manage.thunderforest.com/" target="_blank" style="color:#fc4c02;text-decoration:none;font-weight:600;">manage.thunderforest.com</a></li>
+        </ul>
+    `;
+
+    const storageInfo = document.createElement('div');
+    storageInfo.style.cssText = `
+        font-size: 11px;
+        color: #888;
+        margin-bottom: 24px;
+        text-align: left;
+        font-style: italic;
+    `;
+    storageInfo.textContent = 'API keys are stored exclusively in your browser\'s local storage and never leave your machine.';
+
+    const saveBtn = document.createElement('button');
+    saveBtn.textContent = 'Save Settings';
+    saveBtn.style.cssText = `
+        width: 100%;
+        padding: 12px;
+        background: #fc4c02;
+        color: white;
+        border: none;
+        border-radius: 6px;
+        font-weight: 600;
+        cursor: pointer;
+        font-size: 16px;
+        transition: background 0.2s;
+    `;
+    saveBtn.onmouseover = () => saveBtn.style.background = '#e34402';
+    saveBtn.onmouseout = () => saveBtn.style.background = '#fc4c02';
+    saveBtn.onclick = () => {
+        const val = input.value.trim();
+        const valTF = inputTF.value.trim();
+        localStorage.setItem('strava_more_maps_mapy_api_key', val);
+        localStorage.setItem('strava_more_maps_tf_api_key', valTF);
+        modal.style.display = 'none';
+        // Notify other scripts
+        window.postMessage({
+            type: 'STRAVA_API_KEY_UPDATED',
+            mapyKey: val,
+            tfKey: valTF
+        }, '*');
+    };
+
+    content.appendChild(closeBtn);
+    content.appendChild(title);
+    content.appendChild(instructions);
+    content.appendChild(label);
+    content.appendChild(input);
+    content.appendChild(labelTF);
+    content.appendChild(inputTF);
+    content.appendChild(storageInfo);
+    content.appendChild(saveBtn);
+    modal.appendChild(content);
+    document.body.appendChild(modal);
+
+    settingsModalInjected = true;
+}
+
+function createSettingsButton() {
+    if (settingsButtonInjected || document.querySelector('[data-key="more-maps-settings"]')) return;
+
+    const myRoutes = document.querySelector('[data-key="my-routes"]');
+    if (!myRoutes) return;
+
+    const itemDiv = document.createElement('div');
+    itemDiv.className = 'react-horizontal-scrolling-menu--item';
+    itemDiv.setAttribute('data-key', 'more-maps-settings');
+
+    const innerDiv = document.createElement('div');
+
+    const btn = document.createElement('button');
+    btn.className = 'Button_btn__EdK33 Button_default__JSqPI MapNav_linkButton__nZjYH MapNav_mapButtonShadow__pUy0N';
+    btn.style.display = 'flex';
+    btn.style.alignItems = 'center';
+    btn.style.gap = '8px';
+
+    // Cog icon
+    const cogIcon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    cogIcon.setAttribute('fill', 'currentColor');
+    cogIcon.setAttribute('viewBox', '0 0 16 16');
+    cogIcon.setAttribute('width', '16');
+    cogIcon.setAttribute('height', '16');
+    cogIcon.innerHTML = '<path d="M9.405 1.05c-.413-1.4-2.397-1.4-2.81 0l-.1.34a1.464 1.464 0 0 1-2.105.872l-.31-.17c-1.283-.698-2.686.705-1.987 1.987l.17.311c.546 1.006.009 2.223-.872 2.105l-.34-.1c-1.4-.413-1.4 2.397 0 2.81l.34.1a1.464 1.464 0 0 1 .872 2.105l-.17.31c-.698 1.283.705 2.686 1.987 1.987l.311-.17a1.464 1.464 0 0 1 2.105.872l.1.34c.413 1.4 2.397 1.4 2.81 0l.1-.34a1.464 1.464 0 0 1 2.105-.872l.31.17c1.283.698 2.686-.705 1.987-1.987l-.17-.311a1.464 1.464 0 0 1 .872-2.105l.34.1c1.4.413 1.4-2.397 0-2.81l-.34-.1a1.464 1.464 0 0 1-.872-2.105l.17-.31c.698-1.283-.705-2.686-1.987-1.987l-.311.17a1.464 1.464 0 0 1-2.105-.872l-.1-.34zM8 10.93a2.929 2.929 0 1 1 0-5.86 2.929 2.929 0 0 1 0 5.858z"/>';
+
+    const label = document.createElement('span');
+    label.textContent = 'More Maps';
+
+    btn.appendChild(cogIcon);
+    btn.appendChild(label);
+
+    btn.onclick = () => showSettingsModal();
+
+    innerDiv.appendChild(btn);
+    itemDiv.appendChild(innerDiv);
+
+    myRoutes.after(itemDiv);
+    settingsButtonInjected = true;
+}
+
+// Observer for panorama button injection
+const navObserver = new MutationObserver(() => {
+    createPanoramaButton();
+    createSettingsButton();
+});
+
+function init() {
+    if (!document.body) {
+        requestAnimationFrame(init);
+        return;
+    }
+    observer.observe(document.body, { childList: true, subtree: true });
+    navObserver.observe(document.body, { childList: true, subtree: true });
+
+    // Try to inject immediately
+    createPanoramaButton();
+    createSettingsButton();
+    injectSettingsModal();
+
+    console.log('Strava More Maps: UI Observer started');
+}
+
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+} else {
+    init();
+}
