@@ -1,11 +1,11 @@
 {
-  "name": "strava-more-maps",
+  "name": "stravamoremaps",
   "version": "1.0.0",
   "description": "",
   "main": "constants.js",
   "scripts": {
     "build": "rm -rf dist && mkdir -p dist/assets dist/icons && cp manifest.json browser-polyfill.js *.js LICENSE dist/ && cp -r assets/* dist/assets/ && cp -r icons/* dist/icons/",
-    "zip": "npm run build && cd dist && zip -r ../strava-more-maps.zip ./*",
+    "zip": "npm run build && cd dist && zip -r ../stravamoremaps.zip ./*",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
