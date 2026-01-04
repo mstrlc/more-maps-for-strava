@@ -75,6 +75,12 @@ window.addEventListener('message', (event) => {
         }
     } else if (event.data.type === 'STRAVA_OPEN_SETTINGS') {
         showSettingsModal();
+    } else if (event.data.type === 'STRAVA_API_KEY_UPDATED') {
+        // Sync the provider selector if it exists
+        const selector = document.getElementById('strava-panorama-provider-selector');
+        if (selector) {
+            selector.value = localStorage.getItem(STORAGE_KEYS.PANO_PROVIDER) || 'mapy';
+        }
     }
 });
 
@@ -449,6 +455,48 @@ function createPanoramaButton() {
 
     btn.appendChild(eyeIcon);
     controlGroup.appendChild(btn);
+
+    // Create Provider Selector
+    const selector = document.createElement('select');
+    selector.id = 'strava-panorama-provider-selector';
+    selector.style.cssText = `
+        border: none;
+        background: white;
+        font-size: 11px;
+        font-weight: 600;
+        padding: 0 4px;
+        height: 29px; /* Match Mapbox button height */
+        border-left: 1px solid #ddd;
+        border-radius: 0 4px 4px 0;
+        cursor: pointer;
+        outline: none;
+        color: #333;
+    `;
+
+    const optMapy = document.createElement('option');
+    optMapy.value = 'mapy';
+    optMapy.textContent = 'M';
+    optMapy.title = 'Mapy.cz';
+
+    const optGoogle = document.createElement('option');
+    optGoogle.value = 'google';
+    optGoogle.textContent = 'G';
+    optGoogle.title = 'Google Street View';
+
+    selector.appendChild(optMapy);
+    selector.appendChild(optGoogle);
+
+    // Initial value
+    selector.value = localStorage.getItem(STORAGE_KEYS.PANO_PROVIDER) || 'mapy';
+
+    selector.addEventListener('change', (e) => {
+        const val = e.target.value;
+        localStorage.setItem(STORAGE_KEYS.PANO_PROVIDER, val);
+        window.postMessage({ type: 'STRAVA_API_KEY_UPDATED' }, '*');
+    });
+
+    controlGroup.style.display = 'flex';
+    controlGroup.appendChild(selector);
 
     // Toggle functionality
     panoramaButtonEl = btn;

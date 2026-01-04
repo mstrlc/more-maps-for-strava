@@ -180,6 +180,7 @@
             switchBtn.onclick = () => {
                 state.provider = otherProvider;
                 localStorage.setItem(STORAGE_KEYS.PANO_PROVIDER, otherProvider);
+                window.postMessage({ type: 'STRAVA_API_KEY_UPDATED' }, '*');
                 // Re-open at same position if possible
                 if (state.lastPos) PanoramaManager.open(state.lastPos.lon, state.lastPos.lat);
             };
