@@ -24,6 +24,8 @@
             ],
             "js": [
                 "browser-polyfill.js",
+                "constants.js",
+                "strings.js",
                 "map-modifier.js"
             ],
             "run_at": "document_start"

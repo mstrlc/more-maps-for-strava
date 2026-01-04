@@ -1,6 +1,7 @@
 (function () {
-    const getApiKey = () => localStorage.getItem('strava_more_maps_mapy_api_key') || '';
-    const getTFKey = () => localStorage.getItem('strava_more_maps_tf_api_key') || '';
+    const { STORAGE_KEYS } = StravaMoreMapsConfig;
+    const getApiKey = () => localStorage.getItem(STORAGE_KEYS.MAPY_KEY) || '';
+    const getTFKey = () => localStorage.getItem(STORAGE_KEYS.TF_KEY) || '';
 
     // Config: Use @2x tiles if pixel ratio > 1 for supported layers
     const isRetina = window.devicePixelRatio > 1;
@@ -61,8 +62,8 @@
             this.poller = null;
 
             // Load persisted visuals or use defaults
-            const savedOpacity = localStorage.getItem('strava_more_maps_opacity');
-            const savedSaturation = localStorage.getItem('strava_more_maps_saturation_mapbox');
+            const savedOpacity = localStorage.getItem(STORAGE_KEYS.OPACITY);
+            const savedSaturation = localStorage.getItem(STORAGE_KEYS.SATURATION_MAPBOX);
 
             this.visuals = {
                 grayscale: false,

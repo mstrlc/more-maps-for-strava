@@ -41,27 +41,13 @@
     injectStyles();
 }
 
-const SELECTORS = {
-    CONTAINER: '.MapDisplayControl_options__6iIQA',
-    BUTTON: 'MapDisplayControl_optionButton___nsae',
-    IMAGE: 'MapDisplayControl_option__KwK84',
-    TEXT: ['element_body1__VB3SZ', 'element_fontSize2xs__tRJQR'],
-    SELECTED_CLASS: 'MapDisplayControl_selected__tEGV8',
-    NAV_MENU: '.react-horizontal-scrolling-menu--scroll-container'
-};
-
-const MAP_OPTIONS = [
-    { id: 'mapycz-regular', label: 'Standard', img: 'assets/mapycom/standard.png' },
-    { id: 'mapycz-outdoor', label: 'Outdoor', img: 'assets/mapycom/outdoor.png' },
-    { id: 'mapycz-winter', label: 'Winter', img: 'assets/mapycom/winter.png' },
-    { id: 'mapycz-satellite', label: 'Satellite', img: 'assets/mapycom/satellite.png' }
-];
-
-const OSM_OPTIONS = [
-    { id: 'osm-regular', label: 'Standard', img: 'assets/osm/standard.png' },
-    { id: 'osm-cyclosm', label: 'CyclOSM', img: 'assets/osm/cyclosm.png' },
-    { id: 'osm-cycle', label: 'Cycle Map', img: 'assets/osm/cycle.png' }
-];
+const {
+    SELECTORS,
+    MAP_OPTIONS,
+    OSM_OPTIONS,
+    STORAGE_KEYS,
+    STRINGS
+} = StravaMoreMapsConfig;
 
 let activeMapId = null;
 let panoramaButtonInjected = false;
@@ -79,7 +65,7 @@ window.addEventListener('message', (event) => {
         if (active !== isPanoramaActive) {
             // Check for API key if activating panorama
             if (active) {
-                const apiKey = localStorage.getItem('strava_more_maps_mapy_api_key');
+                const apiKey = localStorage.getItem(STORAGE_KEYS.MAPY_KEY);
                 if (!apiKey) {
                     showSettingsModal(true); // Show with instructions
                     return; // Don't activate panorama yet
@@ -113,7 +99,7 @@ function triggerMapSwitch(mapId) {
             showSettingsModal(true);
         }
     } else if (mapId === 'osm-cycle') {
-        const apiKey = localStorage.getItem('strava_more_maps_tf_api_key');
+        const apiKey = localStorage.getItem(STORAGE_KEYS.TF_KEY);
         if (!apiKey) {
             showSettingsModal(true);
         }
@@ -285,23 +271,23 @@ const observer = new MutationObserver((mutations) => {
                     });
 
                     // --- Visual Adjustments Section ---
-
+                    // --- Styling Controls ---
                     const controlsHeader = header.cloneNode(true);
                     controlsHeader.id = 'strava-more-maps-styling-header';
-                    controlsHeader.querySelector('span').textContent = 'Map Styling';
+                    controlsHeader.querySelector('span').textContent = STRINGS.UI.STYLING_HEADER;
                     controlsHeader.style.marginTop = '16px';
                     container.appendChild(controlsHeader);
 
                     const controlsContainer = document.createElement('div');
                     controlsContainer.id = 'strava-more-maps-styling-section';
                     controlsContainer.style.gridColumn = '1 / -1';
+                    controlsContainer.style.padding = '0 16px 12px';
                     controlsContainer.style.display = 'flex';
                     controlsContainer.style.flexDirection = 'column';
                     controlsContainer.style.gap = '8px';
-                    controlsContainer.style.padding = '0 8px';
 
                     // --- Opacity Slider ---
-                    const initialOpacity = localStorage.getItem('strava_more_maps_opacity') || '1';
+                    const initialOpacity = localStorage.getItem(STORAGE_KEYS.OPACITY) || '1';
                     const opaLabel = document.createElement('label');
                     opaLabel.style.display = 'flex';
                     opaLabel.style.flexDirection = 'column';
@@ -314,7 +300,7 @@ const observer = new MutationObserver((mutations) => {
 
                     const opaLabelText = document.createElement('span');
                     opaLabelText.className = 'element_body1__VB3SZ element_fontSizeXs__sfPOR element_fontWeightBook__Cmleq';
-                    opaLabelText.textContent = 'Opacity';
+                    opaLabelText.textContent = STRINGS.UI.OPACITY_LABEL;
 
                     const opaValueText = document.createElement('span');
                     opaValueText.className = 'element_body1__VB3SZ element_fontSizeXs__sfPOR element_fontWeightBook__Cmleq';
@@ -336,7 +322,7 @@ const observer = new MutationObserver((mutations) => {
                     opaInput.addEventListener('input', (e) => {
                         const val = e.target.value;
                         opaValueText.textContent = `${Math.round(val * 100)}%`;
-                        localStorage.setItem('strava_more_maps_opacity', val);
+                        localStorage.setItem(STORAGE_KEYS.OPACITY, val);
                         window.postMessage({
                             type: 'STRAVA_MAP_MOD_OPACITY',
                             value: val
@@ -348,7 +334,7 @@ const observer = new MutationObserver((mutations) => {
                     controlsContainer.appendChild(opaLabel);
 
                     // --- Saturation Slider ---
-                    const initialSatSlider = localStorage.getItem('strava_more_maps_saturation_slider') || '1';
+                    const initialSatSlider = localStorage.getItem(STORAGE_KEYS.SATURATION_SLIDER) || '1';
                     const satLabel = document.createElement('label');
                     satLabel.style.display = 'flex';
                     satLabel.style.flexDirection = 'column';
@@ -361,7 +347,7 @@ const observer = new MutationObserver((mutations) => {
 
                     const satLabelText = document.createElement('span');
                     satLabelText.className = 'element_body1__VB3SZ element_fontSizeXs__sfPOR element_fontWeightBook__Cmleq';
-                    satLabelText.textContent = 'Saturation';
+                    satLabelText.textContent = STRINGS.UI.SATURATION_LABEL;
 
                     const satValueText = document.createElement('span');
                     satValueText.className = 'element_body1__VB3SZ element_fontSizeXs__sfPOR element_fontWeightBook__Cmleq';
@@ -386,8 +372,8 @@ const observer = new MutationObserver((mutations) => {
 
                         // Map 0..1 to -1..0 (Grayscale to Normal)
                         const mapboxVal = val - 1;
-                        localStorage.setItem('strava_more_maps_saturation_slider', val);
-                        localStorage.setItem('strava_more_maps_saturation_mapbox', mapboxVal);
+                        localStorage.setItem(STORAGE_KEYS.SATURATION_SLIDER, val);
+                        localStorage.setItem(STORAGE_KEYS.SATURATION_MAPBOX, mapboxVal);
 
                         window.postMessage({
                             type: 'STRAVA_MAP_MOD_SATURATION',
@@ -405,7 +391,7 @@ const observer = new MutationObserver((mutations) => {
                     explainer.style.color = '#888';
                     explainer.style.marginTop = '2px';
                     explainer.style.lineHeight = '1.3';
-                    explainer.textContent = 'Map styling only applies to "More Maps" layers.';
+                    explainer.textContent = STRINGS.UI.STYLING_EXPLAINER;
                     controlsContainer.appendChild(explainer);
 
                     container.appendChild(controlsContainer);
@@ -443,7 +429,7 @@ function createPanoramaButton() {
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'mapboxgl-ctrl-icon';
-    btn.title = 'Panorama Mode';
+    btn.title = STRINGS.UI.PANORAMA_TOOLTIP;
     btn.style.display = 'flex';
     btn.style.alignItems = 'center';
     btn.style.justifyContent = 'center';
@@ -530,7 +516,7 @@ function injectSettingsModal() {
     `;
 
     const title = document.createElement('h2');
-    title.textContent = 'More Maps Settings';
+    title.textContent = STRINGS.UI.SETTINGS_TITLE;
     title.style.margin = '0 0 20px 0';
     title.style.fontSize = '24px';
     title.style.color = '#333';
@@ -549,7 +535,7 @@ function injectSettingsModal() {
     `;
     closeBtn.onclick = () => modal.style.display = 'none';
 
-    const { STRINGS, STORAGE_KEYS } = StravaMoreMapsConfig;
+    // Constants already extracted at the top level
 
     const labelMapy = document.createElement('label');
     labelMapy.textContent = STRINGS.SETTINGS.MAPY_LABEL;
@@ -673,7 +659,7 @@ function createSettingsButton() {
     cogIcon.innerHTML = '<path d="M9.405 1.05c-.413-1.4-2.397-1.4-2.81 0l-.1.34a1.464 1.464 0 0 1-2.105.872l-.31-.17c-1.283-.698-2.686.705-1.987 1.987l.17.311c.546 1.006.009 2.223-.872 2.105l-.34-.1c-1.4-.413-1.4 2.397 0 2.81l.34.1a1.464 1.464 0 0 1 .872 2.105l-.17.31c-.698 1.283.705 2.686 1.987 1.987l.311-.17a1.464 1.464 0 0 1 2.105.872l.1.34c.413 1.4 2.397 1.4 2.81 0l.1-.34a1.464 1.464 0 0 1 2.105-.872l.31.17c1.283.698 2.686-.705 1.987-1.987l-.17-.311a1.464 1.464 0 0 1 .872-2.105l.34.1c1.4.413 1.4-2.397 0-2.81l-.34-.1a1.464 1.464 0 0 1-.872-2.105l.17-.31c.698-1.283-.705-2.686-1.987-1.987l-.311.17a1.464 1.464 0 0 1-2.105-.872l-.1-.34zM8 10.93a2.929 2.929 0 1 1 0-5.86 2.929 2.929 0 0 1 0 5.858z"/>';
 
     const label = document.createElement('span');
-    label.textContent = 'More Maps';
+    label.textContent = STRINGS.UI.SETTINGS_LABEL;
 
     btn.appendChild(cogIcon);
     btn.appendChild(label);

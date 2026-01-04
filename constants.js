@@ -1,7 +1,7 @@
 /**
  * Strava More Maps - Configuration
  */
-const StravaMoreMapsConfig = {
+var StravaMoreMapsConfig = {
     SELECTORS: {
         CONTAINER: '.MapDisplayControl_options__6iIQA',
         BUTTON: 'MapDisplayControl_optionButton___nsae',
