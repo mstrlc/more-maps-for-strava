@@ -10,7 +10,7 @@
     const injectPageScript = (filename) => {
         return new Promise((resolve) => {
             const s = document.createElement('script');
-            s.src = chrome.runtime.getURL(filename);
+            s.src = browser.runtime.getURL(filename);
             s.type = 'text/javascript';
             s.onload = resolve;
             (document.body || document.documentElement).appendChild(s);
@@ -170,7 +170,7 @@ function createButton(config) {
 
     const img = document.createElement('img');
     img.alt = config.id;
-    img.src = chrome.runtime.getURL(config.img);
+    img.src = browser.runtime.getURL(config.img);
     img.className = SELECTORS.IMAGE;
     Object.assign(img.style, {
         objectFit: 'cover'

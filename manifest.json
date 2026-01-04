@@ -1,5 +1,5 @@
 {
-    "manifest_version": 2,
+    "manifest_version": 3,
     "name": "Strava More Maps",
     "version": "1.0",
     "description": "Adds additional map options to Strava.",
@@ -12,18 +12,26 @@
                 "*://*.strava.com/*"
             ],
             "js": [
+                "browser-polyfill.js",
                 "map-modifier.js"
             ],
             "run_at": "document_start"
         }
     ],
     "web_accessible_resources": [
-        "constants.js",
-        "strings.js",
-        "inject.js",
-        "panorama.js",
-        "assets/mapycom/*",
-        "assets/osm/*",
-        "icons/*"
+        {
+            "resources": [
+                "constants.js",
+                "strings.js",
+                "inject.js",
+                "panorama.js",
+                "assets/mapycom/*",
+                "assets/osm/*",
+                "icons/*"
+            ],
+            "matches": [
+                "*://*.strava.com/*"
+            ]
+        }
     ]
 }
