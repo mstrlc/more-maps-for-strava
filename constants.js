@@ -26,10 +26,12 @@ const StravaMoreMapsConfig = {
 
     STORAGE_KEYS: {
         MAPY_KEY: 'strava_more_maps_mapy_api_key',
+        GOOGLE_KEY: 'strava_more_maps_google_api_key',
         TF_KEY: 'strava_more_maps_tf_api_key',
         OPACITY: 'strava_more_maps_opacity',
         SATURATION_MAPBOX: 'strava_more_maps_saturation_mapbox',
         SATURATION_SLIDER: 'strava_more_maps_saturation_slider',
-        ACTIVE_ID: 'strava_more_maps_active_id'
+        ACTIVE_ID: 'strava_more_maps_active_id',
+        PANO_PROVIDER: 'strava_more_maps_pano_provider'
     }
 };

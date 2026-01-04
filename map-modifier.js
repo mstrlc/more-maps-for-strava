@@ -549,115 +549,93 @@ function injectSettingsModal() {
     `;
     closeBtn.onclick = () => modal.style.display = 'none';
 
-    const label = document.createElement('label');
-    label.textContent = 'Mapy.cz API Key';
-    label.style.display = 'block';
-    label.style.marginBottom = '8px';
-    label.style.fontWeight = '600';
-    label.style.textAlign = 'left';
+    const { STRINGS, STORAGE_KEYS } = StravaMoreMapsConfig;
 
-    const input = document.createElement('input');
-    input.type = 'text';
-    input.placeholder = 'Enter Mapy.cz API key...';
-    input.value = localStorage.getItem('strava_more_maps_mapy_api_key') || '';
-    input.style.cssText = `
-        width: 100%;
-        padding: 10px 12px;
-        border: 1px solid #ddd;
-        border-radius: 6px;
-        margin-bottom: 16px;
-        font-size: 12px;
-        font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
-    `;
+    const labelMapy = document.createElement('label');
+    labelMapy.textContent = STRINGS.SETTINGS.MAPY_LABEL;
+    labelMapy.style.cssText = 'display:block; margin-bottom:8px; font-weight:600; text-align:left;';
+
+    const inputMapy = document.createElement('input');
+    inputMapy.type = 'text';
+    inputMapy.placeholder = STRINGS.SETTINGS.MAPY_PLACEHOLDER;
+    inputMapy.value = localStorage.getItem(STORAGE_KEYS.MAPY_KEY) || '';
+    inputMapy.style.cssText = 'width:100%; padding:10px 12px; border:1px solid #ddd; border-radius:6px; margin-bottom:16px; font-size:12px; font-family:monospace;';
+
+    const labelGoogle = document.createElement('label');
+    labelGoogle.textContent = STRINGS.SETTINGS.GOOGLE_LABEL;
+    labelGoogle.style.cssText = 'display:block; margin-bottom:8px; font-weight:600; text-align:left;';
+
+    const inputGoogle = document.createElement('input');
+    inputGoogle.type = 'text';
+    inputGoogle.placeholder = STRINGS.SETTINGS.GOOGLE_PLACEHOLDER;
+    inputGoogle.value = localStorage.getItem(STORAGE_KEYS.GOOGLE_KEY) || '';
+    inputGoogle.style.cssText = 'width:100%; padding:10px 12px; border:1px solid #ddd; border-radius:6px; margin-bottom:16px; font-size:12px; font-family:monospace;';
 
     const labelTF = document.createElement('label');
-    labelTF.textContent = 'Thunderforest API Key (for Cycle Map)';
-    labelTF.style.display = 'block';
-    labelTF.style.marginBottom = '8px';
-    labelTF.style.fontWeight = '600';
-    labelTF.style.textAlign = 'left';
+    labelTF.textContent = STRINGS.SETTINGS.TF_LABEL;
+    labelTF.style.cssText = 'display:block; margin-bottom:8px; font-weight:600; text-align:left;';
 
     const inputTF = document.createElement('input');
     inputTF.type = 'text';
-    inputTF.placeholder = 'Enter Thunderforest API key...';
-    inputTF.value = localStorage.getItem('strava_more_maps_tf_api_key') || '';
-    inputTF.style.cssText = `
-        width: 100%;
-        padding: 10px 12px;
-        border: 1px solid #ddd;
-        border-radius: 6px;
-        margin-bottom: 12px;
-        font-size: 12px;
-        font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
-    `;
+    inputTF.placeholder = STRINGS.SETTINGS.TF_PLACEHOLDER;
+    inputTF.value = localStorage.getItem(STORAGE_KEYS.TF_KEY) || '';
+    inputTF.style.cssText = 'width:100%; padding:10px 12px; border:1px solid #ddd; border-radius:6px; margin-bottom:16px; font-size:12px; font-family:monospace;';
+
+    const labelProvider = document.createElement('label');
+    labelProvider.textContent = STRINGS.SETTINGS.PROVIDER_LABEL;
+    labelProvider.style.cssText = 'display:block; margin-bottom:8px; font-weight:600; text-align:left;';
+
+    const selectProvider = document.createElement('select');
+    selectProvider.style.cssText = 'width:100%; padding:10px 12px; border:1px solid #ddd; border-radius:6px; margin-bottom:16px; font-size:13px; background:white;';
+
+    const optMapy = document.createElement('option');
+    optMapy.value = 'mapy';
+    optMapy.textContent = STRINGS.SETTINGS.PROVIDER_MAPY;
+    const optGoogle = document.createElement('option');
+    optGoogle.value = 'google';
+    optGoogle.textContent = STRINGS.SETTINGS.PROVIDER_GOOGLE;
+
+    selectProvider.appendChild(optMapy);
+    selectProvider.appendChild(optGoogle);
+    selectProvider.value = localStorage.getItem(STORAGE_KEYS.PANO_PROVIDER) || 'mapy';
 
     const instructions = document.createElement('div');
-    instructions.id = 'strava-more-maps-api-instructions';
-    instructions.style.cssText = `
-        font-size: 13px;
-        color: #444;
-        margin-bottom: 24px;
-        line-height: 1.5;
-        display: block;
-        background: #fdf6f4;
-        padding: 16px;
-        border-radius: 8px;
-        border-left: 4px solid #fc4c02;
-    `;
+    instructions.style.cssText = 'font-size:13px; color:#444; margin-bottom:24px; line-height:1.5; background:#fdf6f4; padding:16px; border-radius:8px; border-left:4px solid #fc4c02;';
     instructions.innerHTML = `
-        <div style="font-weight:700;margin-bottom:8px;color:#fc4c02;">API Keys Required (Free Tiers Available)</div>
-        To enable all features, please obtain free API keys from:
+        <div style="font-weight:700;margin-bottom:8px;color:#fc4c02;">${STRINGS.SETTINGS.INSTRUCTIONS_TITLE}</div>
+        ${STRINGS.SETTINGS.INSTRUCTIONS_TEXT}
         <ul style="margin:10px 0 0 18px;padding:0;">
-            <li style="margin-bottom:6px;"><strong>Mapy.cz</strong> (Panorama & Standard): <a href="https://developer.mapy.com/account/projects" target="_blank" style="color:#fc4c02;text-decoration:none;font-weight:600;">developer.mapy.com</a></li>
-            <li><strong>Thunderforest</strong> (Cycle Map): <a href="https://manage.thunderforest.com/" target="_blank" style="color:#fc4c02;text-decoration:none;font-weight:600;">manage.thunderforest.com</a></li>
+            <li style="margin-bottom:6px;"><strong>Mapy.cz</strong>: <a href="https://developer.mapy.com/account/projects" target="_blank" style="color:#fc4c02;text-decoration:none;font-weight:600;">developer.mapy.com</a></li>
+            <li style="margin-bottom:6px;"><strong>Google Cloud</strong>: <a href="https://console.cloud.google.com/google/maps-apis/" target="_blank" style="color:#fc4c02;text-decoration:none;font-weight:600;">Google Cloud Console</a></li>
+            <li><strong>Thunderforest</strong>: <a href="https://manage.thunderforest.com/" target="_blank" style="color:#fc4c02;text-decoration:none;font-weight:600;">manage.thunderforest.com</a></li>
         </ul>
     `;
 
     const storageInfo = document.createElement('div');
-    storageInfo.style.cssText = `
-        font-size: 11px;
-        color: #888;
-        margin-bottom: 24px;
-        text-align: left;
-        font-style: italic;
-    `;
-    storageInfo.textContent = 'API keys are stored exclusively in your browser\'s local storage and never leave your machine.';
+    storageInfo.style.cssText = 'font-size:11px; color:#888; margin-bottom:24px; text-align:left; font-style:italic;';
+    storageInfo.textContent = STRINGS.UI.API_KEYS_NOTICE;
 
     const saveBtn = document.createElement('button');
-    saveBtn.textContent = 'Save Settings';
-    saveBtn.style.cssText = `
-        width: 100%;
-        padding: 12px;
-        background: #fc4c02;
-        color: white;
-        border: none;
-        border-radius: 6px;
-        font-weight: 600;
-        cursor: pointer;
-        font-size: 16px;
-        transition: background 0.2s;
-    `;
-    saveBtn.onmouseover = () => saveBtn.style.background = '#e34402';
-    saveBtn.onmouseout = () => saveBtn.style.background = '#fc4c02';
+    saveBtn.textContent = STRINGS.UI.SAVE_BUTTON;
+    saveBtn.style.cssText = 'width:100%; padding:12px; background:#fc4c02; color:white; border:none; border-radius:6px; font-weight:600; cursor:pointer; font-size:16px; transition:background 0.2s;';
     saveBtn.onclick = () => {
-        const val = input.value.trim();
-        const valTF = inputTF.value.trim();
-        localStorage.setItem('strava_more_maps_mapy_api_key', val);
-        localStorage.setItem('strava_more_maps_tf_api_key', valTF);
+        localStorage.setItem(STORAGE_KEYS.MAPY_KEY, inputMapy.value.trim());
+        localStorage.setItem(STORAGE_KEYS.GOOGLE_KEY, inputGoogle.value.trim());
+        localStorage.setItem(STORAGE_KEYS.TF_KEY, inputTF.value.trim());
+        localStorage.setItem(STORAGE_KEYS.PANO_PROVIDER, selectProvider.value);
         modal.style.display = 'none';
-        // Notify other scripts
-        window.postMessage({
-            type: 'STRAVA_API_KEY_UPDATED',
-            mapyKey: val,
-            tfKey: valTF
-        }, '*');
+        window.postMessage({ type: 'STRAVA_API_KEY_UPDATED' }, '*');
     };
 
     content.appendChild(closeBtn);
     content.appendChild(title);
     content.appendChild(instructions);
-    content.appendChild(label);
-    content.appendChild(input);
+    content.appendChild(labelProvider);
+    content.appendChild(selectProvider);
+    content.appendChild(labelMapy);
+    content.appendChild(inputMapy);
+    content.appendChild(labelGoogle);
+    content.appendChild(inputGoogle);
     content.appendChild(labelTF);
     content.appendChild(inputTF);
     content.appendChild(storageInfo);

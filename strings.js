@@ -28,9 +28,14 @@ if (typeof StravaMoreMapsConfig !== 'undefined') {
             INSTRUCTIONS_TITLE: 'API Keys Required (Free Tiers Available)',
             INSTRUCTIONS_TEXT: 'To enable all features, please obtain free API keys from:',
             MAPY_LABEL: 'Mapy.cz API Key',
+            GOOGLE_LABEL: 'Google Maps API Key',
             TF_LABEL: 'Thunderforest API Key (for Cycle Map)',
             MAPY_PLACEHOLDER: 'Enter Mapy.cz API key...',
-            TF_PLACEHOLDER: 'Enter Thunderforest API key...'
+            GOOGLE_PLACEHOLDER: 'Enter Google Maps API key...',
+            TF_PLACEHOLDER: 'Enter Thunderforest API key...',
+            PROVIDER_LABEL: 'Panorama Provider',
+            PROVIDER_MAPY: 'Mapy.cz',
+            PROVIDER_GOOGLE: 'Google Street View'
         }
     };
 }

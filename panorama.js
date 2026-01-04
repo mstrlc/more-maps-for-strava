@@ -10,16 +10,18 @@
 
     const state = {
         apiReady: false,
+        googleApiReady: false,
         active: false,
         expanded: false,
         window: null,
-        panorama: null,
+        panorama: null, // Holds Mapy.cz pano or Google pano
         marker: null,
         map: null,
         ratios: { width: 0.4, height: 0.4 },
         docked: { bottom: true, right: true },
         handleClickBound: null,
-        domClickBound: null
+        domClickBound: null,
+        provider: localStorage.getItem(STORAGE_KEYS.PANO_PROVIDER) || 'mapy'
     };
 
     /**
@@ -159,6 +161,30 @@
 
             errorDiv.appendChild(title);
             errorDiv.appendChild(text);
+
+            // Add Switch Button if we can
+            const otherProvider = state.provider === 'mapy' ? 'google' : 'mapy';
+            const switchBtn = document.createElement('button');
+            switchBtn.style.cssText = `
+                margin-top: 16px;
+                padding: 8px 16px;
+                background: #fc4c02;
+                color: white;
+                border: none;
+                border-radius: 4px;
+                font-size: 12px;
+                font-weight: 600;
+                cursor: pointer;
+            `;
+            switchBtn.textContent = `Try ${otherProvider === 'mapy' ? 'Mapy.cz' : 'Google Street View'}`;
+            switchBtn.onclick = () => {
+                state.provider = otherProvider;
+                localStorage.setItem(STORAGE_KEYS.PANO_PROVIDER, otherProvider);
+                // Re-open at same position if possible
+                if (state.lastPos) PanoramaManager.open(state.lastPos.lon, state.lastPos.lat);
+            };
+            errorDiv.appendChild(switchBtn);
+
             loading.appendChild(errorDiv);
 
             state.window.classList.add('error-state');
@@ -405,7 +431,11 @@
         },
 
         async open(lon, lat) {
-            if (!state.apiReady) await this.loadAPI();
+            state.lastPos = { lon, lat };
+            const provider = state.provider;
+
+            if (provider === 'google' && !state.googleApiReady) await this.loadGoogleAPI();
+            if (provider === 'mapy' && !state.apiReady) await this.loadAPI();
 
             const win = PanoramaUI.createWindow(() => this.handleUserClose());
             const content = win.querySelector('#strava-panorama-content');
@@ -415,37 +445,95 @@
             win.classList.remove('error-state');
 
             try {
-                if (state.panorama) { state.panorama.destroy(); state.panorama = null; }
-                const viewer = content.querySelector('#pano-v') || document.createElement('div');
-                viewer.id = 'pano-v'; viewer.style.cssText = 'width:100%; height:100%;';
-                content.appendChild(viewer);
-
-                const api = window.Panorama || (window.SMap && window.SMap.Pano);
-                if (!api) throw new Error('Panorama API not found');
-
-                const pano = await api.panoramaFromPosition({
-                    parent: viewer, lon, lat, radius: 100, lang: 'en', yaw: 'auto',
-                    fov: Math.PI / 2, showNavigation: true,
-                    apiKey: localStorage.getItem(STORAGE_KEYS.MAPY_KEY)
-                });
-
-                state.panorama = pano;
-                loading.style.display = 'none';
-
-                if (pano.errorCode && pano.errorCode !== 'NONE') {
-                    PanoramaUI.showError({ title: STRINGS.PANORAMA.NO_PANO_TITLE, text: STRINGS.PANORAMA.NO_PANO_TEXT });
-                    return;
+                // Clear existing
+                if (state.panorama) {
+                    if (state.panorama.destroy) state.panorama.destroy();
+                    state.panorama = null;
                 }
 
-                const cam = pano.getCamera();
-                PanoramaMarker.create(state.map, pano.info.lon, pano.info.lat, cam.yaw);
+                let viewer = content.querySelector('#pano-v');
+                if (!viewer) {
+                    viewer = document.createElement('div');
+                    viewer.id = 'pano-v';
+                    viewer.style.cssText = 'width:100%; height:100%;';
+                    content.appendChild(viewer);
+                } else {
+                    viewer.style.display = 'block';
+                    viewer.innerHTML = '';
+                }
 
-                pano.addListener('pano-view', () => PanoramaMarker.updateDir(pano.getCamera().yaw));
-                pano.addListener('pano-place', (p) => p.info && PanoramaMarker.create(state.map, p.info.lon, p.info.lat, pano.getCamera().yaw));
+                if (provider === 'google') {
+                    await this.openGoogle(viewer, lon, lat);
+                } else {
+                    await this.openMapy(viewer, lon, lat);
+                }
 
+                loading.style.display = 'none';
             } catch (e) {
+                console.error('Strava More Maps: Pano Open Error', e);
                 PanoramaUI.showError({ title: STRINGS.PANORAMA.ERROR_TITLE, text: e.message });
             }
+        },
+
+        async openMapy(viewer, lon, lat) {
+            const api = window.Panorama || (window.SMap && window.SMap.Pano);
+            if (!api) throw new Error('Mapy.cz Panorama API not found');
+
+            const pano = await api.panoramaFromPosition({
+                parent: viewer, lon, lat, radius: 100, lang: 'en', yaw: 'auto',
+                fov: Math.PI / 2, showNavigation: true,
+                apiKey: localStorage.getItem(STORAGE_KEYS.MAPY_KEY)
+            });
+
+            state.panorama = pano;
+
+            if (pano.errorCode && pano.errorCode !== 'NONE') {
+                throw new Error(STRINGS.PANORAMA.NO_PANO_TEXT);
+            }
+
+            const cam = pano.getCamera();
+            PanoramaMarker.create(state.map, pano.info.lon, pano.info.lat, cam.yaw);
+
+            pano.addListener('pano-view', () => PanoramaMarker.updateDir(pano.getCamera().yaw));
+            pano.addListener('pano-place', (p) => p.info && PanoramaMarker.create(state.map, p.info.lon, p.info.lat, pano.getCamera().yaw));
+        },
+
+        async openGoogle(viewer, lon, lat) {
+            if (!window.google || !window.google.maps) throw new Error('Google Maps API not loaded');
+
+            const sv = new google.maps.StreetViewService();
+            const location = { lat, lng: lon };
+
+            const result = await new Promise((resolve, reject) => {
+                sv.getPanorama({ location, radius: 100 }, (data, status) => {
+                    if (status === "OK") resolve(data);
+                    else reject(new Error('No Google Street View found here.'));
+                });
+            });
+
+            const pano = new google.maps.StreetViewPanorama(viewer, {
+                position: result.location.latLng,
+                pov: { heading: 0, pitch: 0 },
+                zoom: 1,
+                addressControl: false,
+                linksControl: true,
+                panControl: true,
+                enableCloseButton: false
+            });
+
+            state.panorama = pano;
+
+            const pos = result.location.latLng;
+            PanoramaMarker.create(state.map, pos.lng(), pos.lat(), 0);
+
+            pano.addListener('pov_changed', () => {
+                PanoramaMarker.updateDir(pano.getPov().heading * Math.PI / 180);
+            });
+
+            pano.addListener('position_changed', () => {
+                const p = pano.getPosition();
+                PanoramaMarker.create(state.map, p.lng(), p.lat(), pano.getPov().heading * Math.PI / 180);
+            });
         },
 
         // Explicitly called when user clicks 'X'
@@ -495,6 +583,34 @@
             });
         },
 
+        loadGoogleAPI() {
+            if (state.googleApiReady) return Promise.resolve();
+
+            return new Promise((resolve, reject) => {
+                const key = localStorage.getItem(STORAGE_KEYS.GOOGLE_KEY);
+                console.log('Strava More Maps: Loading Google Maps API...');
+                const s = document.createElement('script');
+                s.src = `https://maps.googleapis.com/maps/api/js?key=${key || ''}`;
+                s.onload = () => {
+                    const check = (a = 0) => {
+                        if (window.google && window.google.maps) {
+                            state.googleApiReady = true;
+                            console.log('Strava More Maps: Google Maps API Ready');
+                            resolve();
+                        }
+                        else if (a < 50) setTimeout(() => check(a + 1), 100);
+                        else reject('Google API Timeout');
+                    };
+                    check();
+                };
+                s.onerror = (e) => {
+                    console.error('Strava More Maps: Failed to load Google Maps JS', e);
+                    reject(e);
+                };
+                document.head.appendChild(s);
+            });
+        },
+
         setupLayoutObserver() {
             // Watch for any DOM changes that might indicate the bottom bar appearing/sized
             const observer = new MutationObserver(() => {
@@ -531,4 +647,20 @@
         disable: PanoramaManager.disable.bind(PanoramaManager),
         isActive: () => state.active
     };
+
+    window.addEventListener('message', (e) => {
+        if (e.data.type === 'STRAVA_API_KEY_UPDATED') {
+            const newProvider = localStorage.getItem(STORAGE_KEYS.PANO_PROVIDER) || 'mapy';
+            if (newProvider !== state.provider) {
+                state.provider = newProvider;
+                // If window is open, try to switch
+                if (state.active && state.window && state.lastPos) {
+                    PanoramaManager.open(state.lastPos.lon, state.lastPos.lat);
+                }
+            }
+            // Reset ready states to force reload with new keys
+            state.apiReady = false;
+            state.googleApiReady = false;
+        }
+    });
 })();
