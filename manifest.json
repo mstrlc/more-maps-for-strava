@@ -1,11 +1,11 @@
 {
     "manifest_version": 3,
-    "name": "Strava More Maps",
+    "name": "Route Recon for Strava",
     "version": "1.0",
     "description": "Adds additional map options to Strava.",
     "browser_specific_settings": {
         "gecko": {
-            "id": "stravamoremaps@mstrlc.eu",
+            "id": "routerecon@mstrlc.eu",
             "strict_min_version": "109.0",
             "data_collection_permissions": {
                 "required": [
@@ -15,7 +15,8 @@
         }
     },
     "icons": {
-        "48": "icons/border-48.png"
+        "48": "icons/icon.png",
+        "128": "icons/icon.png"
     },
     "content_scripts": [
         {

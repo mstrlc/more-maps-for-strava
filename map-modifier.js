@@ -1,5 +1,5 @@
 /**
- * Strava More Maps - Map Modifier Script
+ * Route Recon for Strava - Map Modifier Script
  * 
  * Injects the content script and manages the UI integration with Strava's map controller.
  */
@@ -48,7 +48,7 @@ const {
     GOOGLE_OPTIONS,
     STORAGE_KEYS,
     STRINGS
-} = StravaMoreMapsConfig;
+} = RouteReconConfig;
 
 let activeMapId = null;
 let panoramaButtonInjected = false;
@@ -61,7 +61,7 @@ let panoramaXIcon = null;
 window.addEventListener('message', (event) => {
     if (event.source !== window || !event.data) return;
 
-    if (event.data.type === 'STRAVA_PANORAMA_TOGGLE') {
+    if (event.data.type === 'ROUTERECON_PANORAMA_TOGGLE') {
         const active = event.data.active;
         if (active !== isPanoramaActive) {
             // Check for API key if activating panorama
@@ -74,9 +74,9 @@ window.addEventListener('message', (event) => {
             }
             updatePanoramaUI(active);
         }
-    } else if (event.data.type === 'STRAVA_OPEN_SETTINGS') {
+    } else if (event.data.type === 'ROUTERECON_OPEN_SETTINGS') {
         showSettingsModal();
-    } else if (event.data.type === 'STRAVA_API_KEY_UPDATED') {
+    } else if (event.data.type === 'ROUTERECON_API_KEY_UPDATED') {
         // Sync the provider selector if it exists
         const selector = document.getElementById('strava-panorama-provider-selector');
         if (selector) {
@@ -101,7 +101,7 @@ function updatePanoramaUI(active) {
 function triggerMapSwitch(mapId) {
     // Check for API keys if switching to a custom map
     if (mapId.startsWith('mapycz-')) {
-        const apiKey = localStorage.getItem('strava_more_maps_mapy_api_key');
+        const apiKey = localStorage.getItem(STORAGE_KEYS.MAPY_KEY);
         if (!apiKey) {
             showSettingsModal(true);
         }
@@ -114,7 +114,7 @@ function triggerMapSwitch(mapId) {
 
     activeMapId = mapId;
     window.postMessage({
-        type: 'STRAVA_MAP_SWITCH',
+        type: 'ROUTERECON_MAP_SWITCH',
         mapType: mapId
     }, '*');
 
@@ -124,8 +124,8 @@ function triggerMapSwitch(mapId) {
 }
 
 function updateStylingControls(enabled) {
-    const stylingSection = document.getElementById('strava-more-maps-styling-section');
-    const stylingHeader = document.getElementById('strava-more-maps-styling-header');
+    const stylingSection = document.getElementById('routerecon-styling-section');
+    const stylingHeader = document.getElementById('routerecon-styling-header');
 
     if (stylingSection && stylingHeader) {
         if (enabled) {
@@ -289,13 +289,13 @@ const observer = new MutationObserver((mutations) => {
                     // --- Visual Adjustments Section ---
                     // --- Styling Controls ---
                     const controlsHeader = header.cloneNode(true);
-                    controlsHeader.id = 'strava-more-maps-styling-header';
+                    controlsHeader.id = 'routerecon-styling-header';
                     controlsHeader.querySelector('span').textContent = STRINGS.UI.STYLING_HEADER;
                     controlsHeader.style.marginTop = '16px';
                     container.appendChild(controlsHeader);
 
                     const controlsContainer = document.createElement('div');
-                    controlsContainer.id = 'strava-more-maps-styling-section';
+                    controlsContainer.id = 'routerecon-styling-section';
                     controlsContainer.style.gridColumn = '1 / -1';
                     controlsContainer.style.padding = '0 16px 12px';
                     controlsContainer.style.display = 'flex';
@@ -340,7 +340,7 @@ const observer = new MutationObserver((mutations) => {
                         opaValueText.textContent = `${Math.round(val * 100)}%`;
                         localStorage.setItem(STORAGE_KEYS.OPACITY, val);
                         window.postMessage({
-                            type: 'STRAVA_MAP_MOD_OPACITY',
+                            type: 'ROUTERECON_MAP_MOD_OPACITY',
                             value: val
                         }, '*');
                     });
@@ -392,7 +392,7 @@ const observer = new MutationObserver((mutations) => {
                         localStorage.setItem(STORAGE_KEYS.SATURATION_MAPBOX, mapboxVal);
 
                         window.postMessage({
-                            type: 'STRAVA_MAP_MOD_SATURATION',
+                            type: 'ROUTERECON_MAP_MOD_SATURATION',
                             value: mapboxVal
                         }, '*');
                     });
@@ -515,7 +515,7 @@ function createPanoramaButton() {
     selector.addEventListener('change', (e) => {
         const val = e.target.value;
         localStorage.setItem(STORAGE_KEYS.PANO_PROVIDER, val);
-        window.postMessage({ type: 'STRAVA_API_KEY_UPDATED' }, '*');
+        window.postMessage({ type: 'ROUTERECON_API_KEY_UPDATED' }, '*');
     });
 
     controlGroup.appendChild(selector);
@@ -528,13 +528,13 @@ function createPanoramaButton() {
     btn.addEventListener('click', () => {
         const newState = !isPanoramaActive;
         updatePanoramaUI(newState);
-        window.postMessage({ type: 'STRAVA_PANORAMA_TOGGLE', active: newState }, '*');
+        window.postMessage({ type: 'ROUTERECON_PANORAMA_TOGGLE', active: newState }, '*');
     });
 
     // Prepend to top-left to be above geolocate
     ctrlContainer.prepend(controlGroup);
 
-    console.log('Strava More Maps: Panorama control added!');
+    console.log('Route Recon: Panorama control added!');
 }
 
 // --- Settings Button and Modal ---
@@ -544,21 +544,21 @@ let settingsButtonInjected = false;
 
 function showSettingsModal(showInstructions = false) {
     injectSettingsModal();
-    const modal = document.getElementById('strava-more-maps-settings-modal');
+    const modal = document.getElementById('routerecon-settings-modal');
     if (modal) {
         modal.style.display = 'flex';
         if (showInstructions) {
-            const instr = document.getElementById('strava-more-maps-api-instructions');
+            const instr = document.getElementById('routerecon-api-instructions');
             if (instr) instr.style.display = 'block';
         }
     }
 }
 
 function injectSettingsModal() {
-    if (settingsModalInjected || document.getElementById('strava-more-maps-settings-modal')) return;
+    if (settingsModalInjected || document.getElementById('routerecon-settings-modal')) return;
 
     const modal = document.createElement('div');
-    modal.id = 'strava-more-maps-settings-modal';
+    modal.id = 'routerecon-settings-modal';
     modal.style.cssText = `
         position: fixed;
         top: 0;
@@ -584,11 +584,25 @@ function injectSettingsModal() {
         position: relative;
     `;
 
+    const headerWrapper = document.createElement('div');
+    headerWrapper.style.display = 'flex';
+    headerWrapper.style.alignItems = 'center';
+    headerWrapper.style.gap = '12px';
+    headerWrapper.style.marginBottom = '24px';
+
+    const orangeIcon = document.createElement('img');
+    orangeIcon.src = browser.runtime.getURL('icons/icon_orange.svg');
+    orangeIcon.style.width = '24px';
+    orangeIcon.style.height = '24px';
+
     const title = document.createElement('h2');
     title.textContent = STRINGS.UI.SETTINGS_TITLE;
-    title.style.margin = '0 0 20px 0';
+    title.style.margin = '0';
     title.style.fontSize = '24px';
     title.style.color = '#333';
+
+    headerWrapper.appendChild(orangeIcon);
+    headerWrapper.appendChild(title);
 
     const closeBtn = document.createElement('button');
     closeBtn.textContent = '×';
@@ -655,6 +669,7 @@ function injectSettingsModal() {
     selectProvider.value = localStorage.getItem(STORAGE_KEYS.PANO_PROVIDER) || 'mapy';
 
     const instructions = document.createElement('div');
+    instructions.id = 'routerecon-api-instructions';
     instructions.style.cssText = 'font-size:13px; color:#444; margin-bottom:24px; line-height:1.5; background:#fdf6f4; padding:16px; border-radius:8px; border-left:4px solid #fc4c02;';
 
     const instrTitle = document.createElement('div');
@@ -706,11 +721,11 @@ function injectSettingsModal() {
         localStorage.setItem(STORAGE_KEYS.TF_KEY, inputTF.value.trim());
         localStorage.setItem(STORAGE_KEYS.PANO_PROVIDER, selectProvider.value);
         modal.style.display = 'none';
-        window.postMessage({ type: 'STRAVA_API_KEY_UPDATED' }, '*');
+        window.postMessage({ type: 'ROUTERECON_API_KEY_UPDATED' }, '*');
     };
 
     content.appendChild(closeBtn);
-    content.appendChild(title);
+    content.appendChild(headerWrapper);
     content.appendChild(instructions);
     content.appendChild(labelProvider);
     content.appendChild(selectProvider);
@@ -746,20 +761,16 @@ function createSettingsButton() {
     btn.style.alignItems = 'center';
     btn.style.gap = '8px';
 
-    // Cog icon
-    const cogIcon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    cogIcon.setAttribute('fill', 'currentColor');
-    cogIcon.setAttribute('viewBox', '0 0 16 16');
-    cogIcon.setAttribute('width', '16');
-    cogIcon.setAttribute('height', '16');
-    const cogPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-    cogPath.setAttribute('d', 'M9.405 1.05c-.413-1.4-2.397-1.4-2.81 0l-.1.34a1.464 1.464 0 0 1-2.105.872l-.31-.17c-1.283-.698-2.686.705-1.987 1.987l.17.311c.546 1.006.009 2.223-.872 2.105l-.34-.1c-1.4-.413-1.4 2.397 0 2.81l.34.1a1.464 1.464 0 0 1 .872 2.105l-.17.31c-.698 1.283.705 2.686 1.987 1.987l.311-.17a1.464 1.464 0 0 1 2.105.872l.1.34c.413 1.4 2.397 1.4 2.81 0l.1-.34a1.464 1.464 0 0 1 2.105-.872l.31.17c1.283.698 2.686-.705 1.987-1.987l-.17-.311a1.464 1.464 0 0 1 .872-2.105l.34.1c1.4.413 1.4-2.397 0-2.81l-.34-.1a1.464 1.464 0 0 1-.872-2.105l.17-.31c.698-1.283-.705-2.686-1.987-1.987l-.311.17a1.464 1.464 0 0 1-2.105-.872l-.1-.34zM8 10.93a2.929 2.929 0 1 1 0-5.86 2.929 2.929 0 0 1 0 5.858z');
-    cogIcon.appendChild(cogPath);
+    // Black icon
+    const icon = document.createElement('img');
+    icon.src = browser.runtime.getURL('icons/icon_black.svg');
+    icon.style.width = '16px';
+    icon.style.height = '16px';
 
     const label = document.createElement('span');
     label.textContent = STRINGS.UI.SETTINGS_LABEL;
 
-    btn.appendChild(cogIcon);
+    btn.appendChild(icon);
     btn.appendChild(label);
 
     btn.onclick = () => showSettingsModal();
@@ -790,7 +801,7 @@ function init() {
     createSettingsButton();
     injectSettingsModal();
 
-    console.log('Strava More Maps: UI Observer started');
+    console.log('Route Recon: UI Observer started');
 }
 
 if (document.readyState === 'loading') {

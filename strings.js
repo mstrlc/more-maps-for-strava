@@ -1,19 +1,19 @@
 /**
- * Strava More Maps - Strings (English)
+ * Route Recon for Strava - Strings (English)
  *
  * This file centralises all user‑visible text strings.
  */
 
-if (typeof StravaMoreMapsConfig !== 'undefined') {
-    StravaMoreMapsConfig.STRINGS = {
+if (typeof RouteReconConfig !== 'undefined') {
+    RouteReconConfig.STRINGS = {
         UI: {
             PANORAMA_TOOLTIP: 'Panorama Mode',
-            SETTINGS_LABEL: 'More Maps',
-            SETTINGS_TITLE: 'More Maps Settings',
+            SETTINGS_LABEL: 'Route Recon Settings',
+            SETTINGS_TITLE: 'Route Recon Settings',
             API_KEYS_NOTICE: "API keys are stored exclusively in your browser's local storage and never leave your machine.",
             SAVE_BUTTON: 'Save Settings',
             STYLING_HEADER: 'Map Styling',
-            STYLING_EXPLAINER: 'Only applies to "More Maps" layers.',
+            STYLING_EXPLAINER: 'Only applies to custom layers.',
             OPACITY_LABEL: 'Opacity',
             SATURATION_LABEL: 'Saturation'
         },
