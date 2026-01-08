@@ -78,7 +78,7 @@ window.addEventListener('message', (event) => {
         showSettingsModal();
     } else if (event.data.type === 'ROUTERECON_API_KEY_UPDATED') {
         // Sync the provider selector if it exists
-        const selector = document.getElementById('strava-panorama-provider-selector');
+        const selector = document.getElementById('routerecon-panorama-provider-selector');
         if (selector) {
             selector.value = localStorage.getItem(STORAGE_KEYS.PANO_PROVIDER) || 'mapy';
         }
@@ -479,7 +479,7 @@ function createPanoramaButton() {
 
     // Create Provider Selector
     const selector = document.createElement('select');
-    selector.id = 'strava-panorama-provider-selector';
+    selector.id = 'routerecon-panorama-provider-selector';
     selector.style.cssText = `
         border: none !important;
         background: transparent !important;

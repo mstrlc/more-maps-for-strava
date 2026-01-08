@@ -179,7 +179,7 @@
 
             const text = document.createElement('div');
             text.style.cssText = 'font-size:13px; color:white; font-weight:500;';
-            text.textContent = msg.text;
+            text.innerHTML = msg.text;
 
             errorDiv.appendChild(title);
             errorDiv.appendChild(text);
@@ -200,11 +200,9 @@
             `;
             switchBtn.textContent = `Try ${otherProvider === 'mapy' ? 'Mapy.cz' : 'Google Street View'}`;
             switchBtn.onclick = () => {
-                state.provider = otherProvider;
-                localStorage.setItem(STORAGE_KEYS.PANO_PROVIDER, otherProvider);
+                const newProvider = state.provider === 'mapy' ? 'google' : 'mapy';
+                localStorage.setItem(STORAGE_KEYS.PANO_PROVIDER, newProvider);
                 window.postMessage({ type: 'ROUTERECON_API_KEY_UPDATED' }, '*');
-                // Re-open at same position if possible
-                if (state.lastPos) PanoramaManager.open(state.lastPos.lon, state.lastPos.lat);
             };
             errorDiv.appendChild(switchBtn);
 
@@ -465,6 +463,18 @@
             const loading = win.querySelector('#routerecon-panorama-loading');
 
             loading.style.display = 'flex';
+
+            // Restore loading contents if they were replaced by an error message
+            if (!loading.querySelector('.pano-spinner')) {
+                while (loading.firstChild) loading.removeChild(loading.firstChild);
+                const spinner = document.createElement('div');
+                spinner.className = 'pano-spinner';
+                const loadingText = document.createElement('div');
+                loadingText.textContent = STRINGS.PANORAMA.LOADING;
+                loading.appendChild(spinner);
+                loading.appendChild(loadingText);
+            }
+
             win.classList.remove('error-state');
 
             try {
@@ -691,16 +701,15 @@
     window.addEventListener('message', (e) => {
         if (e.data.type === 'ROUTERECON_API_KEY_UPDATED') {
             const newProvider = localStorage.getItem(STORAGE_KEYS.PANO_PROVIDER) || 'mapy';
-            if (newProvider !== state.provider) {
-                state.provider = newProvider;
-                // Sync UI button
-                const switchBtn = document.getElementById('routerecon-panorama-switch');
-                if (switchBtn) switchBtn.textContent = state.provider === 'mapy' ? 'Mapy.cz' : 'Google';
+            state.provider = newProvider;
 
-                // If window is open, try to switch
-                if (state.active && state.window && state.lastPos) {
-                    PanoramaManager.open(state.lastPos.lon, state.lastPos.lat);
-                }
+            // Sync UI button
+            const mainSwitchBtn = document.getElementById('routerecon-panorama-switch');
+            if (mainSwitchBtn) mainSwitchBtn.textContent = state.provider === 'mapy' ? 'Mapy.cz' : 'Google';
+
+            // If window is open, try to switch/re-open
+            if (state.active && state.window && state.lastPos) {
+                PanoramaManager.open(state.lastPos.lon, state.lastPos.lat);
             }
             // Reset ready states to force reload with new keys
             state.apiReady = false;
