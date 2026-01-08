@@ -28,6 +28,9 @@
             .${SELECTORS.SELECTED_CLASS} span {
                 font-weight: 700 !important;
             }
+            ${SELECTORS.CONTAINER} {
+                grid-template-columns: repeat(4, 1fr) !important;
+            }
         `;
         document.head.appendChild(style);
 
@@ -286,17 +289,18 @@ const observer = new MutationObserver((mutations) => {
                     const controlsContainer = document.createElement('div');
                     controlsContainer.id = 'routerecon-styling-section';
                     controlsContainer.style.gridColumn = '1 / -1';
-                    controlsContainer.style.padding = '0 16px 12px';
+                    controlsContainer.style.padding = '0';
                     controlsContainer.style.display = 'flex';
                     controlsContainer.style.flexDirection = 'column';
-                    controlsContainer.style.gap = '8px';
+                    controlsContainer.style.gap = '0';
 
                     // --- Opacity Slider ---
                     const initialOpacity = localStorage.getItem(STORAGE_KEYS.OPACITY) || '1';
                     const opaLabel = document.createElement('label');
                     opaLabel.style.display = 'flex';
                     opaLabel.style.flexDirection = 'column';
-                    opaLabel.style.gap = '4px';
+                    opaLabel.style.gap = '0';
+                    opaLabel.style.padding = '4px 8px';
 
                     const opaHeader = document.createElement('div');
                     opaHeader.style.display = 'flex';
@@ -322,7 +326,8 @@ const observer = new MutationObserver((mutations) => {
                     opaInput.value = initialOpacity;
                     opaInput.style.width = '100%';
                     opaInput.style.accentColor = '#fc4c02';
-                    opaInput.style.marginTop = '4px';
+                    opaInput.style.height = '12px';
+                    opaInput.style.cursor = 'pointer';
 
                     opaInput.addEventListener('input', (e) => {
                         const val = e.target.value;
@@ -343,7 +348,8 @@ const observer = new MutationObserver((mutations) => {
                     const satLabel = document.createElement('label');
                     satLabel.style.display = 'flex';
                     satLabel.style.flexDirection = 'column';
-                    satLabel.style.gap = '4px';
+                    satLabel.style.gap = '0';
+                    satLabel.style.padding = '4px 8px';
 
                     const satHeader = document.createElement('div');
                     satHeader.style.display = 'flex';
@@ -369,7 +375,8 @@ const observer = new MutationObserver((mutations) => {
                     satInput.value = initialSatSlider;
                     satInput.style.width = '100%';
                     satInput.style.accentColor = '#fc4c02';
-                    satInput.style.marginTop = '4px';
+                    satInput.style.height = '12px';
+                    satInput.style.cursor = 'pointer';
 
                     satInput.addEventListener('input', (e) => {
                         const val = parseFloat(e.target.value);
@@ -392,10 +399,10 @@ const observer = new MutationObserver((mutations) => {
 
                     // Explainer Text
                     const explainer = document.createElement('div');
-                    explainer.style.fontSize = '11px';
+                    explainer.style.fontSize = '10px';
                     explainer.style.color = '#888';
-                    explainer.style.marginTop = '2px';
-                    explainer.style.lineHeight = '1.3';
+                    explainer.style.padding = '2px 8px 8px';
+                    explainer.style.lineHeight = '1.2';
                     explainer.textContent = STRINGS.UI.STYLING_EXPLAINER;
                     controlsContainer.appendChild(explainer);
 
@@ -623,8 +630,12 @@ function injectSettingsModal() {
         font-size: 24px;
         cursor: pointer;
         color: #999;
+        z-index: 10001;
     `;
-    closeBtn.onclick = () => modal.style.display = 'none';
+    closeBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        modal.style.display = 'none';
+    });
 
     // Constants already extracted at the top level
 
