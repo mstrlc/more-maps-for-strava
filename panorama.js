@@ -46,20 +46,35 @@
                 .handle-t { top: 0; left: 0; right: 0; height: 10px; cursor: ns-resize; }
                 .handle-l { top: 0; left: 0; bottom: 0; width: 10px; cursor: ew-resize; }
                 .handle-tl { top: 0; left: 0; width: 20px; height: 20px; cursor: nwse-resize; z-index: 10006; }
-                #routerecon-panorama-close, #routerecon-panorama-switch {
+                #routerecon-panorama-close { 
+                    right: 12px; width: 28px; border-radius: 50%; font-size: 24px;
                     position: absolute; top: 12px;
-                    background: rgba(255, 255, 255, 0.9); border: none; color: #333;
+                    background: rgba(255, 255, 255, 0.5); border: none; color: #333;
                     height: 28px; cursor: pointer;
                     display: flex; align-items: center; justify-content: center;
                     z-index: 10010; box-shadow: 0 2px 6px rgba(0,0,0,0.2);
-                    transition: all 0.2s;
+                    transition: all 0.2s; backdrop-filter: blur(8px);
                 }
-                #routerecon-panorama-close { right: 12px; width: 28px; border-radius: 50%; font-size: 24px; }
-                #routerecon-panorama-switch { 
-                    right: 48px; width: auto; min-width: 28px; padding: 0 10px; 
-                    border-radius: 14px; font-size: 11px; font-weight: 800; font-family: sans-serif; 
+                #routerecon-panorama-close:hover { background: white; transform: scale(1.05); }
+                #routerecon-panorama-segmented-control {
+                    position: absolute; top: 12px; right: 48px;
+                    display: flex; gap: 2px; background: rgba(255, 255, 255, 0.5);
+                    padding: 3px; border-radius: 18px; z-index: 10010;
+                    box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+                    backdrop-filter: blur(8px);
                 }
-                #routerecon-panorama-close:hover, #routerecon-panorama-switch:hover { background: white; transform: scale(1.05); }
+                .pano-segment {
+                    padding: 4px 12px; border-radius: 15px;
+                    font-size: 11px; font-weight: 700; color: #666;
+                    cursor: pointer; transition: all 0.2s;
+                    user-select: none;
+                }
+                .pano-segment.active {
+                    background: #fc4c02; color: white;
+                }
+                .pano-segment:not(.active):hover {
+                    color: #333;
+                }
                 #routerecon-panorama-drag-handle {
                     position: absolute; top: 0; left: 0; right: 0; height: 40px; z-index: 10002; cursor: move;
                 }
@@ -104,18 +119,29 @@
             closeBtn.textContent = '×';
             closeBtn.onclick = onClose;
 
-            const switchBtn = document.createElement('button');
-            switchBtn.id = 'routerecon-panorama-switch';
-            switchBtn.title = 'Switch Provider (Mapy.cz / Google)';
-            switchBtn.textContent = state.provider === 'mapy' ? 'Mapy.cz' : 'Google';
-            switchBtn.onclick = () => {
-                const other = state.provider === 'mapy' ? 'google' : 'mapy';
-                state.provider = other;
-                switchBtn.textContent = other === 'mapy' ? 'Mapy.cz' : 'Google';
-                localStorage.setItem(STORAGE_KEYS.PANO_PROVIDER, other);
-                window.postMessage({ type: 'ROUTERECON_API_KEY_UPDATED' }, '*');
-                if (state.lastPos) PanoramaManager.open(state.lastPos.lon, state.lastPos.lat);
-            };
+            const segmentedControl = document.createElement('div');
+            segmentedControl.id = 'routerecon-panorama-segmented-control';
+
+            const segments = ['mapy', 'google'];
+            segments.forEach(p => {
+                const seg = document.createElement('div');
+                seg.className = `pano-segment ${state.provider === p ? 'active' : ''}`;
+                seg.dataset.provider = p;
+                seg.textContent = p === 'mapy' ? STRINGS.SETTINGS.PROVIDER_MAPY : 'Google';
+                seg.onclick = () => {
+                    if (state.provider === p) return;
+                    state.provider = p;
+                    localStorage.setItem(STORAGE_KEYS.PANO_PROVIDER, p);
+
+                    // Update UI immediately
+                    segmentedControl.querySelectorAll('.pano-segment').forEach(s => s.classList.remove('active'));
+                    seg.classList.add('active');
+
+                    window.postMessage({ type: 'ROUTERECON_API_KEY_UPDATED' }, '*');
+                    if (state.lastPos) PanoramaManager.open(state.lastPos.lon, state.lastPos.lat);
+                };
+                segmentedControl.appendChild(seg);
+            });
 
             const content = document.createElement('div');
             content.id = 'routerecon-panorama-content';
@@ -134,7 +160,7 @@
             content.appendChild(loading);
 
             win.appendChild(handle);
-            win.appendChild(switchBtn);
+            win.appendChild(segmentedControl);
             win.appendChild(closeBtn);
             win.appendChild(content);
 
@@ -198,7 +224,7 @@
                 font-weight: 600;
                 cursor: pointer;
             `;
-            switchBtn.textContent = `Try ${otherProvider === 'mapy' ? 'Mapy.cz' : 'Google Street View'}`;
+            switchBtn.textContent = `${STRINGS.SETTINGS.TRY_PROVIDER_PREFIX}${otherProvider === 'mapy' ? STRINGS.SETTINGS.PROVIDER_MAPY : STRINGS.SETTINGS.PROVIDER_GOOGLE}`;
             switchBtn.onclick = () => {
                 const newProvider = state.provider === 'mapy' ? 'google' : 'mapy';
                 localStorage.setItem(STORAGE_KEYS.PANO_PROVIDER, newProvider);
@@ -710,17 +736,22 @@
         isActive: () => state.active
     };
 
-    window.addEventListener('message', (e) => {
-        if (e.data.type === 'ROUTERECON_API_KEY_UPDATED') {
+    window.addEventListener('message', (event) => {
+        if (event.source !== window || !event.data) return;
+
+        if (event.data.type === 'ROUTERECON_API_KEY_UPDATED') {
             const newProvider = localStorage.getItem(STORAGE_KEYS.PANO_PROVIDER) || 'mapy';
             state.provider = newProvider;
 
-            // Sync UI button
-            const mainSwitchBtn = document.getElementById('routerecon-panorama-switch');
-            if (mainSwitchBtn) mainSwitchBtn.textContent = state.provider === 'mapy' ? 'Mapy.cz' : 'Google';
+            // Sync Segmented Control if it exists
+            const ctrl = document.getElementById('routerecon-panorama-segmented-control');
+            if (ctrl) {
+                ctrl.querySelectorAll('.pano-segment').forEach(seg => {
+                    seg.classList.toggle('active', seg.dataset.provider === newProvider);
+                });
+            }
 
-            // If window is open, try to switch/re-open
-            if (state.active && state.window && state.lastPos) {
+            if (state.active && state.lastPos) {
                 PanoramaManager.open(state.lastPos.lon, state.lastPos.lat);
             }
             // Reset ready states to force reload with new keys
