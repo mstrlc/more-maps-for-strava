@@ -62,9 +62,7 @@ window.addEventListener('message', (event) => {
     if (event.source !== window || !event.data) return;
 
     if (event.data.type === 'ROUTERECON_PANORAMA_TOGGLE') {
-        if (active !== isPanoramaActive) {
-            updatePanoramaUI(active);
-        }
+        updatePanoramaUI(event.data.active);
     } else if (event.data.type === 'ROUTERECON_OPEN_SETTINGS') {
         showSettingsModal(event.data.instructions || false, event.data.highlightKey || null);
     } else if (event.data.type === 'ROUTERECON_API_KEY_UPDATED') {
