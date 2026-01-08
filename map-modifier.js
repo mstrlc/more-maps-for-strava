@@ -630,9 +630,28 @@ function injectSettingsModal() {
 
     // Constants already extracted at the top level
 
+    const createApiLink = (url) => {
+        const a = document.createElement('a');
+        a.href = url;
+        a.target = '_blank';
+        a.style.cssText = 'color:#fc4c02; text-decoration:underline; display:inline-flex; align-items:center; margin-left:8px; vertical-align:middle; font-size:11px; font-weight:500;';
+        a.innerHTML = `<span style="margin-right:4px;">${STRINGS.SETTINGS.GET_KEY}</span><svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><line x1="7" y1="17" x2="17" y2="7"></line><polyline points="7 7 17 7 17 17"></polyline></svg>`;
+        return a;
+    };
+
+    const apiKeysHeading = document.createElement('div');
+    apiKeysHeading.style.cssText = 'display:flex; align-items:center; gap:8px; font-size:16px; font-weight:700; color:#333; margin: 8px 0 16px 0; padding-top: 16px; border-top: 1px solid #eee; text-align:left;';
+    apiKeysHeading.innerHTML = `
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="color:#fc4c02;">
+            <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3-3.5 3.5z"></path>
+        </svg>
+        <span>${STRINGS.SETTINGS.API_KEYS_HEADER}</span>
+    `;
+
     const labelMapy = document.createElement('label');
-    labelMapy.textContent = STRINGS.SETTINGS.MAPY_LABEL;
-    labelMapy.style.cssText = 'display:block; margin-bottom:8px; font-weight:600; text-align:left;';
+    labelMapy.style.cssText = 'display:flex; align-items:center; margin-bottom:8px; font-weight:600; text-align:left; font-size:13px; color:#333; width:100%;';
+    labelMapy.innerHTML = `<span>${STRINGS.SETTINGS.MAPY_LABEL}</span>`;
+    labelMapy.appendChild(createApiLink(STRINGS.SETTINGS.API_LINKS.MAPY));
 
     const inputMapy = document.createElement('input');
     inputMapy.id = `input-${STORAGE_KEYS.MAPY_KEY}`;
@@ -646,8 +665,9 @@ function injectSettingsModal() {
     };
 
     const labelGoogle = document.createElement('label');
-    labelGoogle.textContent = STRINGS.SETTINGS.GOOGLE_LABEL;
-    labelGoogle.style.cssText = 'display:block; margin-bottom:8px; font-weight:600; text-align:left;';
+    labelGoogle.style.cssText = 'display:flex; align-items:center; margin-bottom:8px; font-weight:600; text-align:left; font-size:13px; color:#333; width:100%;';
+    labelGoogle.innerHTML = `<span>${STRINGS.SETTINGS.GOOGLE_LABEL}</span>`;
+    labelGoogle.appendChild(createApiLink(STRINGS.SETTINGS.API_LINKS.GOOGLE));
 
     const inputGoogle = document.createElement('input');
     inputGoogle.id = `input-${STORAGE_KEYS.GOOGLE_KEY}`;
@@ -661,8 +681,9 @@ function injectSettingsModal() {
     };
 
     const labelTF = document.createElement('label');
-    labelTF.textContent = STRINGS.SETTINGS.TF_LABEL;
-    labelTF.style.cssText = 'display:block; margin-bottom:8px; font-weight:600; text-align:left;';
+    labelTF.style.cssText = 'display:flex; align-items:center; margin-bottom:8px; font-weight:600; text-align:left; font-size:13px; color:#333; width:100%;';
+    labelTF.innerHTML = `<span>${STRINGS.SETTINGS.TF_LABEL}</span>`;
+    labelTF.appendChild(createApiLink(STRINGS.SETTINGS.API_LINKS.TF));
 
     const inputTF = document.createElement('input');
     inputTF.id = `input-${STORAGE_KEYS.TF_KEY}`;
@@ -675,66 +696,12 @@ function injectSettingsModal() {
         inputTF.style.backgroundColor = 'white';
     };
 
-    const labelProvider = document.createElement('label');
-    labelProvider.textContent = STRINGS.SETTINGS.PROVIDER_LABEL;
-    labelProvider.style.cssText = 'display:block; margin-bottom:8px; font-weight:600; text-align:left;';
 
-    const selectProvider = document.createElement('select');
-    selectProvider.style.cssText = 'width:100%; padding:10px 12px; border:1px solid #ddd; border-radius:6px; margin-bottom:16px; font-size:13px; background:white;';
 
-    const optMapy = document.createElement('option');
-    optMapy.value = 'mapy';
-    optMapy.textContent = STRINGS.SETTINGS.PROVIDER_MAPY;
-    const optGoogle = document.createElement('option');
-    optGoogle.value = 'google';
-    optGoogle.textContent = STRINGS.SETTINGS.PROVIDER_GOOGLE;
 
-    selectProvider.appendChild(optMapy);
-    selectProvider.appendChild(optGoogle);
-    selectProvider.value = localStorage.getItem(STORAGE_KEYS.PANO_PROVIDER) || 'mapy';
-
-    const instructions = document.createElement('div');
-    instructions.id = 'routerecon-api-instructions';
-    instructions.style.cssText = 'font-size:13px; color:#444; margin-bottom:24px; line-height:1.5; background:#fdf6f4; padding:16px; border-radius:8px; border-left:4px solid #fc4c02;';
-
-    const instrTitle = document.createElement('div');
-    instrTitle.style.cssText = 'font-weight:700;margin-bottom:8px;color:#fc4c02;';
-    instrTitle.textContent = STRINGS.SETTINGS.INSTRUCTIONS_TITLE;
-    instructions.appendChild(instrTitle);
-
-    const instrText = document.createTextNode(STRINGS.SETTINGS.INSTRUCTIONS_TEXT);
-    instructions.appendChild(instrText);
-
-    const instrList = document.createElement('ul');
-    instrList.style.cssText = 'margin:10px 0 0 18px;padding:0;';
-
-    const providers = [
-        { name: 'Mapy.cz', url: 'https://developer.mapy.com/account/projects', label: 'developer.mapy.com' },
-        { name: 'Google Cloud', url: 'https://console.cloud.google.com/google/maps-apis/', label: 'Google Cloud Console' },
-        { name: 'Thunderforest', url: 'https://manage.thunderforest.com/', label: 'manage.thunderforest.com' }
-    ];
-
-    providers.forEach(p => {
-        const li = document.createElement('li');
-        li.style.marginBottom = '6px';
-
-        const strong = document.createElement('strong');
-        strong.textContent = p.name + ': ';
-        li.appendChild(strong);
-
-        const a = document.createElement('a');
-        a.href = p.url;
-        a.target = '_blank';
-        a.style.cssText = 'color:#fc4c02;text-decoration:none;font-weight:600;';
-        a.textContent = p.label;
-        li.appendChild(a);
-
-        instrList.appendChild(li);
-    });
-    instructions.appendChild(instrList);
 
     const storageInfo = document.createElement('div');
-    storageInfo.style.cssText = 'font-size:11px; color:#888; margin-bottom:24px; text-align:left; font-style:italic;';
+    storageInfo.style.cssText = 'font-size:11px; color:#888; margin-bottom:24px; text-align:left;';
     storageInfo.textContent = STRINGS.UI.API_KEYS_NOTICE;
 
     const saveBtn = document.createElement('button');
@@ -760,7 +727,6 @@ function injectSettingsModal() {
         localStorage.setItem(STORAGE_KEYS.MAPY_KEY, inputMapy.value.trim());
         localStorage.setItem(STORAGE_KEYS.GOOGLE_KEY, inputGoogle.value.trim());
         localStorage.setItem(STORAGE_KEYS.TF_KEY, inputTF.value.trim());
-        localStorage.setItem(STORAGE_KEYS.PANO_PROVIDER, selectProvider.value);
 
         // Clear any highlights
         [inputMapy, inputGoogle, inputTF].forEach(inp => {
@@ -808,9 +774,7 @@ function injectSettingsModal() {
 
     content.appendChild(closeBtn);
     content.appendChild(headerWrapper);
-    content.appendChild(instructions);
-    content.appendChild(labelProvider);
-    content.appendChild(selectProvider);
+    content.appendChild(apiKeysHeading);
     content.appendChild(labelMapy);
     content.appendChild(inputMapy);
     content.appendChild(labelGoogle);

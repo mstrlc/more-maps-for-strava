@@ -29,15 +29,22 @@ if (typeof RouteReconConfig !== 'undefined') {
         SETTINGS: {
             INSTRUCTIONS_TITLE: 'API Keys Required (Free Tiers Available)',
             INSTRUCTIONS_TEXT: 'To enable all features, please obtain free API keys from:',
-            MAPY_LABEL: 'Mapy.cz API Key',
-            GOOGLE_LABEL: 'Google Maps API Key',
-            TF_LABEL: 'Thunderforest API Key (for Cycle Map)',
+            MAPY_LABEL: 'Mapy.cz',
+            GOOGLE_LABEL: 'Google Maps',
+            TF_LABEL: 'Thunderforest (for Cycle Map)',
             MAPY_PLACEHOLDER: 'Enter Mapy.cz API key...',
             GOOGLE_PLACEHOLDER: 'Enter Google Maps API key...',
             TF_PLACEHOLDER: 'Enter Thunderforest API key...',
-            PROVIDER_LABEL: 'Panorama Provider',
             PROVIDER_MAPY: 'Mapy.cz',
-            PROVIDER_GOOGLE: 'Google Street View'
+            PROVIDER_GOOGLE: 'Google Street View',
+            API_KEYS_HEADER: 'API Keys',
+            GET_KEY: 'Get API key',
+            TRY_PROVIDER_PREFIX: 'Try ',
+            API_LINKS: {
+                MAPY: 'https://developer.mapy.com/account/projects',
+                GOOGLE: 'https://console.cloud.google.com/google/maps-apis/credentials',
+                TF: 'https://manage.thunderforest.com/'
+            }
         }
     };
 }
