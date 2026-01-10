@@ -1,4 +1,4 @@
-# <img src="icons/icon_orange.svg" width="24" height="24" alt="Route Recon icon" /> Route Recon for Strava
+# <img src="icons/icon_orange.svg" width="24" height="24" alt="Route Recon icon" />&ensp;Route Recon for Strava
 
 A browser extension that adds additional map layers and a panorama mode to Strava's route builder.
 
