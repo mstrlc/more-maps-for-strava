@@ -1,4 +1,4 @@
-# <img src="icons/icon_orange.svg" width="24" height="24" alt="Route Recon icon" />&ensp;Route Recon for Strava
+# <img src="icons/icon_orange.svg" width="24" height="24" alt="More Maps for Strava icon" />&ensp;More Maps for Strava
 
 A browser extension that adds additional map layers and a panorama mode to Strava's route builder.
 
@@ -70,7 +70,7 @@ Fine-tune your map appearance:
 
 ### API Keys
 
-Some features require free API keys. Click the **Route Recon Settings** button in Strava's map layer menu to configure them:
+Some features require free API keys. Click the **More Maps Settings** button in Strava's map layer menu to configure them:
 
 | Provider | Required For | Get Your Key |
 |----------|--------------|--------------|
@@ -108,7 +108,7 @@ npm run build
 npm run zip
 ```
 
-This creates `routerecon.zip` ready for distribution.
+This creates `moremaps.zip` ready for distribution.
 
 ## License
 

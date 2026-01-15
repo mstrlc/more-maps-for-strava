@@ -1,12 +1,12 @@
 /**
- * Route Recon for Strava - Panorama Module
+ * More Maps for Strava - Panorama Module
  * 
  * Handles Mapy.cz panorama integration with a small corner window.
  * Runs in the page context.
  */
 
 (() => {
-    const { STRINGS, STORAGE_KEYS } = RouteReconConfig;
+    const { STRINGS, STORAGE_KEYS } = MoreMapsConfig;
 
     const state = {
         apiReady: false,
@@ -30,23 +30,23 @@
      */
     const PanoramaUI = {
         injectStyles() {
-            if (document.getElementById('routerecon-panorama-styles')) return;
+            if (document.getElementById('moremaps-panorama-styles')) return;
             const style = document.createElement('style');
-            style.id = 'routerecon-panorama-styles';
+            style.id = 'moremaps-panorama-styles';
             style.textContent = `
-                #routerecon-panorama-window {
+                #moremaps-panorama-window {
                     position: fixed; bottom: 20px; right: 20px;
                     width: 600px; height: 450px; min-width: 300px; min-height: 200px;
                     max-width: calc(100vw - 40px); max-height: calc(100vh - 145px);
                     background: #1a1a1a; border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.4);
                     z-index: 10001; display: flex; flex-direction: column; overflow: hidden;
                 }
-                #routerecon-panorama-window.error-state { background: rgba(0, 0, 0, 0.2) !important; backdrop-filter: blur(4px); }
+                #moremaps-panorama-window.error-state { background: rgba(0, 0, 0, 0.2) !important; backdrop-filter: blur(4px); }
                 .pano-handle { position: absolute; z-index: 10005; }
                 .handle-t { top: 0; left: 0; right: 0; height: 10px; cursor: ns-resize; }
                 .handle-l { top: 0; left: 0; bottom: 0; width: 10px; cursor: ew-resize; }
                 .handle-tl { top: 0; left: 0; width: 20px; height: 20px; cursor: nwse-resize; z-index: 10006; }
-                #routerecon-panorama-close { 
+                #moremaps-panorama-close { 
                     right: 12px; width: 28px; border-radius: 50%; font-size: 24px;
                     position: absolute; top: 12px;
                     background: rgba(255, 255, 255, 0.5); border: none; color: #333;
@@ -55,8 +55,8 @@
                     z-index: 10010; box-shadow: 0 2px 6px rgba(0,0,0,0.2);
                     transition: all 0.2s; backdrop-filter: blur(8px);
                 }
-                #routerecon-panorama-close:hover { background: white; transform: scale(1.05); }
-                #routerecon-panorama-segmented-control {
+                #moremaps-panorama-close:hover { background: white; transform: scale(1.05); }
+                #moremaps-panorama-segmented-control {
                     position: absolute; top: 12px; right: 48px;
                     display: flex; gap: 2px; background: rgba(255, 255, 255, 0.5);
                     padding: 3px; border-radius: 18px; z-index: 10010;
@@ -75,27 +75,27 @@
                 .pano-segment:not(.active):hover {
                     color: #333;
                 }
-                #routerecon-panorama-drag-handle {
+                #moremaps-panorama-drag-handle {
                     position: absolute; top: 0; left: 0; right: 0; height: 40px; z-index: 10002; cursor: move;
                 }
-                #routerecon-panorama-content { flex: 1; position: relative; overflow: hidden; }
-                #routerecon-panorama-loading {
+                #moremaps-panorama-content { flex: 1; position: relative; overflow: hidden; }
+                #moremaps-panorama-loading {
                     position: absolute; inset: 0; background: #1a1a1a; color: white;
                     display: flex; flex-direction: column; align-items: center; justify-content: center;
                     text-align: center; z-index: 10001;
                 }
-                #routerecon-panorama-window.error-state #routerecon-panorama-loading { background: transparent; }
+                #moremaps-panorama-window.error-state #moremaps-panorama-loading { background: transparent; }
                 .pano-spinner {
                     width: 30px; height: 30px; border: 3px solid rgba(255,255,255,0.3);
                     border-top-color: white; border-radius: 50%; animation: pano-spin 1s linear infinite;
                     margin-bottom: 12px;
                 }
                 @keyframes pano-spin { to { transform: rotate(360deg); } }
-                body.routerecon-panorama-active .mapboxgl-canvas { cursor: crosshair !important; }
-                body.routerecon-panorama-active .MapPointerTooltip_mapTooltip__gaOkC,
-                body.routerecon-panorama-active .mapboxgl-popup { display: none !important; }
-                body.routerecon-panorama-active [class*="RouteBuilder_sidebar"],
-                body.routerecon-panorama-active [class*="RouteBuilderSidePanel"] {
+                body.moremaps-panorama-active .mapboxgl-canvas { cursor: crosshair !important; }
+                body.moremaps-panorama-active .MapPointerTooltip_mapTooltip__gaOkC,
+                body.moremaps-panorama-active .mapboxgl-popup { display: none !important; }
+                body.moremaps-panorama-active [class*="RouteBuilder_sidebar"],
+                body.moremaps-panorama-active [class*="RouteBuilderSidePanel"] {
                     pointer-events: none !important;
                     opacity: 0.6 !important;
                     filter: grayscale(1) !important;
@@ -108,19 +108,19 @@
         createWindow(onClose) {
             if (state.window) return state.window;
             const win = document.createElement('div');
-            win.id = 'routerecon-panorama-window';
+            win.id = 'moremaps-panorama-window';
 
             const handle = document.createElement('div');
-            handle.id = 'routerecon-panorama-drag-handle';
+            handle.id = 'moremaps-panorama-drag-handle';
 
             const closeBtn = document.createElement('button');
-            closeBtn.id = 'routerecon-panorama-close';
+            closeBtn.id = 'moremaps-panorama-close';
             closeBtn.title = STRINGS.PANORAMA.CLOSE_TOOLTIP;
             closeBtn.textContent = '×';
             closeBtn.onclick = onClose;
 
             const segmentedControl = document.createElement('div');
-            segmentedControl.id = 'routerecon-panorama-segmented-control';
+            segmentedControl.id = 'moremaps-panorama-segmented-control';
 
             const segments = ['mapy', 'google'];
             segments.forEach(p => {
@@ -137,17 +137,17 @@
                     segmentedControl.querySelectorAll('.pano-segment').forEach(s => s.classList.remove('active'));
                     seg.classList.add('active');
 
-                    window.postMessage({ type: 'ROUTERECON_API_KEY_UPDATED' }, '*');
+                    window.postMessage({ type: 'MOREMAPS_API_KEY_UPDATED' }, '*');
                     if (state.lastPos) PanoramaManager.open(state.lastPos.lon, state.lastPos.lat);
                 };
                 segmentedControl.appendChild(seg);
             });
 
             const content = document.createElement('div');
-            content.id = 'routerecon-panorama-content';
+            content.id = 'moremaps-panorama-content';
 
             const loading = document.createElement('div');
-            loading.id = 'routerecon-panorama-loading';
+            loading.id = 'moremaps-panorama-loading';
 
             const spinner = document.createElement('div');
             spinner.className = 'pano-spinner';
@@ -173,7 +173,7 @@
                 Resizable.init(win, h, side);
             });
 
-            Draggable.init(win, win.querySelector('#routerecon-panorama-drag-handle'));
+            Draggable.init(win, win.querySelector('#moremaps-panorama-drag-handle'));
             state.window = win;
 
             // Initialize ratios based on initial size (600x450)
@@ -187,7 +187,7 @@
         },
 
         showError(msg) {
-            const loading = state.window.querySelector('#routerecon-panorama-loading');
+            const loading = state.window.querySelector('#moremaps-panorama-loading');
             const viewer = state.window.querySelector('#pano-v');
             if (viewer) viewer.style.display = 'none';
 
@@ -228,7 +228,7 @@
             switchBtn.onclick = () => {
                 const newProvider = state.provider === 'mapy' ? 'google' : 'mapy';
                 localStorage.setItem(STORAGE_KEYS.PANO_PROVIDER, newProvider);
-                window.postMessage({ type: 'ROUTERECON_API_KEY_UPDATED' }, '*');
+                window.postMessage({ type: 'MOREMAPS_API_KEY_UPDATED' }, '*');
             };
             errorDiv.appendChild(switchBtn);
 
@@ -426,10 +426,10 @@
     const PanoramaManager = {
         async enable(map) {
             if (state.active && state.map === map) return;
-            console.log('Route Recon: Enabling Panorama Mode');
+            console.log('More Maps: Enabling Panorama Mode');
             state.active = true;
             state.map = map;
-            document.body.classList.add('routerecon-panorama-active');
+            document.body.classList.add('moremaps-panorama-active');
             PanoramaUI.injectStyles();
 
             const canvas = map.getCanvas();
@@ -445,7 +445,7 @@
                     const y = e.clientY - rect.top;
                     const lngLat = map.unproject([x, y]);
 
-                    console.log('Route Recon: Panorama Click Intercepted');
+                    console.log('More Maps: Panorama Click Intercepted');
                     this.open(lngLat.lng, lngLat.lat);
                 };
                 // Register in CAPTURE phase to be first
@@ -457,9 +457,9 @@
 
         disable() {
             if (!state.active) return;
-            console.log('Route Recon: Disabling Panorama Mode');
+            console.log('More Maps: Disabling Panorama Mode');
             state.active = false;
-            document.body.classList.remove('routerecon-panorama-active');
+            document.body.classList.remove('moremaps-panorama-active');
 
             const canvas = state.map ? state.map.getCanvas() : null;
             if (canvas && state.domClickBound) {
@@ -483,7 +483,7 @@
 
             if (!key) {
                 window.postMessage({
-                    type: 'ROUTERECON_OPEN_SETTINGS',
+                    type: 'MOREMAPS_OPEN_SETTINGS',
                     instructions: true,
                     highlightKey: provider === 'mapy' ? STORAGE_KEYS.MAPY_KEY : STORAGE_KEYS.GOOGLE_KEY
                 }, '*');
@@ -497,8 +497,8 @@
             if (provider === 'mapy' && !state.apiReady) await this.loadAPI();
 
             const win = PanoramaUI.createWindow(() => this.handleUserClose());
-            const content = win.querySelector('#routerecon-panorama-content');
-            const loading = win.querySelector('#routerecon-panorama-loading');
+            const content = win.querySelector('#moremaps-panorama-content');
+            const loading = win.querySelector('#moremaps-panorama-loading');
 
             loading.style.display = 'flex';
 
@@ -541,7 +541,7 @@
 
                 loading.style.display = 'none';
             } catch (e) {
-                console.error('Route Recon: Pano Open Error', e);
+                console.error('More Maps: Pano Open Error', e);
                 PanoramaUI.showError({ title: STRINGS.PANORAMA.ERROR_TITLE, text: e.message });
             }
         },
@@ -628,7 +628,7 @@
         handleUserClose() {
             this.disable();
             this.closeWindow();
-            window.postMessage({ type: 'ROUTERECON_PANORAMA_TOGGLE', active: false }, '*');
+            window.postMessage({ type: 'MOREMAPS_PANORAMA_TOGGLE', active: false }, '*');
         },
 
         // Internal cleanup
@@ -648,14 +648,14 @@
 
             return new Promise((resolve, reject) => {
                 const key = localStorage.getItem(STORAGE_KEYS.MAPY_KEY);
-                console.log('Route Recon: Loading Panorama API...');
+                console.log('More Maps: Loading Panorama API...');
                 const s = document.createElement('script');
                 s.src = `https://api.mapy.cz/js/panorama/v1/panorama.js${key ? `?apikey=${key}` : ''}`;
                 s.onload = () => {
                     const check = (a = 0) => {
                         if (window.Panorama || (window.SMap && window.SMap.Pano)) {
                             state.apiReady = true;
-                            console.log('Route Recon: Panorama API Ready');
+                            console.log('More Maps: Panorama API Ready');
                             resolve();
                         }
                         else if (a < 50) setTimeout(() => check(a + 1), 100);
@@ -664,7 +664,7 @@
                     check();
                 };
                 s.onerror = (e) => {
-                    console.error('Route Recon: Failed to load Panorama JS', e);
+                    console.error('More Maps: Failed to load Panorama JS', e);
                     reject(e);
                 };
                 document.head.appendChild(s);
@@ -676,14 +676,14 @@
 
             return new Promise((resolve, reject) => {
                 const key = localStorage.getItem(STORAGE_KEYS.GOOGLE_KEY);
-                console.log('Route Recon: Loading Google Maps API...');
+                console.log('More Maps: Loading Google Maps API...');
                 const s = document.createElement('script');
                 s.src = `https://maps.googleapis.com/maps/api/js?key=${key || ''}`;
                 s.onload = () => {
                     const check = (a = 0) => {
                         if (window.google && window.google.maps) {
                             state.googleApiReady = true;
-                            console.log('Route Recon: Google Maps API Ready');
+                            console.log('More Maps: Google Maps API Ready');
                             resolve();
                         }
                         else if (a < 50) setTimeout(() => check(a + 1), 100);
@@ -692,7 +692,7 @@
                     check();
                 };
                 s.onerror = (e) => {
-                    console.error('Route Recon: Failed to load Google Maps JS', e);
+                    console.error('More Maps: Failed to load Google Maps JS', e);
                     reject(e);
                 };
                 document.head.appendChild(s);
@@ -730,7 +730,7 @@
         }
     };
 
-    window.RouteReconPanorama = {
+    window.MoreMapsPanorama = {
         enable: PanoramaManager.enable.bind(PanoramaManager),
         disable: PanoramaManager.disable.bind(PanoramaManager),
         isActive: () => state.active
@@ -739,12 +739,12 @@
     window.addEventListener('message', (event) => {
         if (event.source !== window || !event.data) return;
 
-        if (event.data.type === 'ROUTERECON_API_KEY_UPDATED') {
+        if (event.data.type === 'MOREMAPS_API_KEY_UPDATED') {
             const newProvider = localStorage.getItem(STORAGE_KEYS.PANO_PROVIDER) || 'mapy';
             state.provider = newProvider;
 
             // Sync Segmented Control if it exists
-            const ctrl = document.getElementById('routerecon-panorama-segmented-control');
+            const ctrl = document.getElementById('moremaps-panorama-segmented-control');
             if (ctrl) {
                 ctrl.querySelectorAll('.pano-segment').forEach(seg => {
                     seg.classList.toggle('active', seg.dataset.provider === newProvider);

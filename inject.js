@@ -1,5 +1,5 @@
 (function () {
-    const { STORAGE_KEYS } = RouteReconConfig;
+    const { STORAGE_KEYS } = MoreMapsConfig;
     const getApiKey = () => localStorage.getItem(STORAGE_KEYS.MAPY_KEY) || '';
     const getTFKey = () => localStorage.getItem(STORAGE_KEYS.TF_KEY) || '';
 
@@ -72,7 +72,7 @@
     /**
      * Manages Strava map instances and layer manipulation.
      */
-    class RouteReconManager {
+    class MoreMapsManager {
         constructor() {
             this.maps = [];
             this.poller = null;
@@ -109,23 +109,23 @@
         handleMessage(event) {
             if (event.source !== window || !event.data) return;
 
-            if (event.data.type === 'ROUTERECON_MAP_SWITCH') {
+            if (event.data.type === 'MOREMAPS_MAP_SWITCH') {
                 const { mapType } = event.data;
                 this.currentMapType = mapType;
                 this.findMaps(); // Ensure we have latest maps
                 this.maps.forEach(map => this.applyMapStyle(map, mapType));
-            } else if (event.data.type === 'ROUTERECON_MAP_MOD_GRAYSCALE') {
+            } else if (event.data.type === 'MOREMAPS_MAP_MOD_GRAYSCALE') {
                 this.visuals.grayscale = event.data.value;
                 this.updateAllVisuals();
-            } else if (event.data.type === 'ROUTERECON_MAP_MOD_OPACITY') {
+            } else if (event.data.type === 'MOREMAPS_MAP_MOD_OPACITY') {
                 this.visuals.opacity = event.data.value;
                 this.updateAllVisuals();
-            } else if (event.data.type === 'ROUTERECON_MAP_MOD_SATURATION') {
+            } else if (event.data.type === 'MOREMAPS_MAP_MOD_SATURATION') {
                 this.visuals.saturation = event.data.value;
                 this.updateAllVisuals();
-            } else if (event.data.type === 'ROUTERECON_PANORAMA_TOGGLE') {
+            } else if (event.data.type === 'MOREMAPS_PANORAMA_TOGGLE') {
                 this.handlePanoramaToggle(event.data.active);
-            } else if (event.data.type === 'ROUTERECON_API_KEY_UPDATED') {
+            } else if (event.data.type === 'MOREMAPS_API_KEY_UPDATED') {
                 // Key changed, refresh active layer
                 if (this.currentMapType !== 'strava-default') {
                     this.findMaps();
@@ -153,7 +153,7 @@
                 const config = MAP_SOURCES[mapType];
                 if (!config) return;
 
-                console.log('Route Recon: Switching to', mapType);
+                console.log('More Maps: Switching to', mapType);
 
                 // Hide Strava's composite layers (buildings, roads, labels)
                 this.setStravaVisibility(map, false);
@@ -183,7 +183,7 @@
                 }, beforeId);
 
             } catch (e) {
-                console.error('Route Recon: Error applying layer', e);
+                console.error('More Maps: Error applying layer', e);
             }
         }
 
@@ -215,12 +215,12 @@
 
             // Wait for panorama module to load if needed
             const tryToggle = (attempts = 0) => {
-                if (typeof window.RouteReconPanorama !== 'undefined') {
+                if (typeof window.MoreMapsPanorama !== 'undefined') {
 
                     if (active) {
-                        window.RouteReconPanorama.enable(map);
+                        window.MoreMapsPanorama.enable(map);
                     } else {
-                        window.RouteReconPanorama.disable(map);
+                        window.MoreMapsPanorama.disable(map);
                     }
                 } else if (attempts < 20) {
                     // Retry after a short delay (increased to 20 attempts)
@@ -229,7 +229,7 @@
                     }
                     setTimeout(() => tryToggle(attempts + 1), 200);
                 } else {
-                    console.error('Panorama module failed to load. window.RouteReconPanorama is:', typeof window.RouteReconPanorama);
+                    console.error('Panorama module failed to load. window.MoreMapsPanorama is:', typeof window.MoreMapsPanorama);
                     console.error('Available window properties:', Object.keys(window).filter(k => k.includes('Strava')));
                 }
             };
@@ -349,7 +349,7 @@
                     if (fiber) {
                         const map = this.scanFiberForMap(fiber);
                         if (map && !this.maps.includes(map)) {
-                            console.log('%cRoute Recon: Map CAPTURED!', 'color: green', map);
+                            console.log('%cMore Maps: Map CAPTURED!', 'color: green', map);
                             this.maps.push(map);
                         }
                         if (map) return;
@@ -448,6 +448,6 @@
     }
 
     // Instantiate and start
-    const manager = new RouteReconManager();
+    const manager = new MoreMapsManager();
     manager.start();
 })();

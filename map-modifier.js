@@ -1,5 +1,5 @@
 /**
- * Route Recon for Strava - Map Modifier Script
+ * More Maps for Strava - Map Modifier Script
  * 
  * Injects the content script and manages the UI integration with Strava's map controller.
  */
@@ -51,7 +51,7 @@ const {
     GOOGLE_OPTIONS,
     STORAGE_KEYS,
     STRINGS
-} = RouteReconConfig;
+} = MoreMapsConfig;
 
 let activeMapId = null;
 let panoramaButtonInjected = false;
@@ -64,13 +64,13 @@ let panoramaXIcon = null;
 window.addEventListener('message', (event) => {
     if (event.source !== window || !event.data) return;
 
-    if (event.data.type === 'ROUTERECON_PANORAMA_TOGGLE') {
+    if (event.data.type === 'MOREMAPS_PANORAMA_TOGGLE') {
         updatePanoramaUI(event.data.active);
-    } else if (event.data.type === 'ROUTERECON_OPEN_SETTINGS') {
+    } else if (event.data.type === 'MOREMAPS_OPEN_SETTINGS') {
         showSettingsModal(event.data.instructions || false, event.data.highlightKey || null);
-    } else if (event.data.type === 'ROUTERECON_API_KEY_UPDATED') {
+    } else if (event.data.type === 'MOREMAPS_API_KEY_UPDATED') {
         // Sync the provider selector if it exists
-        const selector = document.getElementById('routerecon-panorama-provider-selector');
+        const selector = document.getElementById('moremaps-panorama-provider-selector');
         if (selector) {
             selector.value = localStorage.getItem(STORAGE_KEYS.PANO_PROVIDER) || 'mapy';
         }
@@ -106,7 +106,7 @@ function triggerMapSwitch(mapId) {
 
     activeMapId = mapId;
     window.postMessage({
-        type: 'ROUTERECON_MAP_SWITCH',
+        type: 'MOREMAPS_MAP_SWITCH',
         mapType: mapId
     }, '*');
 
@@ -116,8 +116,8 @@ function triggerMapSwitch(mapId) {
 }
 
 function updateStylingControls(enabled) {
-    const stylingSection = document.getElementById('routerecon-styling-section');
-    const stylingHeader = document.getElementById('routerecon-styling-header');
+    const stylingSection = document.getElementById('moremaps-styling-section');
+    const stylingHeader = document.getElementById('moremaps-styling-header');
 
     if (stylingSection && stylingHeader) {
         if (enabled) {
@@ -281,13 +281,13 @@ const observer = new MutationObserver((mutations) => {
                     // --- Visual Adjustments Section ---
                     // --- Styling Controls ---
                     const controlsHeader = header.cloneNode(true);
-                    controlsHeader.id = 'routerecon-styling-header';
+                    controlsHeader.id = 'moremaps-styling-header';
                     controlsHeader.querySelector('span').textContent = STRINGS.UI.STYLING_HEADER;
                     controlsHeader.style.marginTop = '16px';
                     container.appendChild(controlsHeader);
 
                     const controlsContainer = document.createElement('div');
-                    controlsContainer.id = 'routerecon-styling-section';
+                    controlsContainer.id = 'moremaps-styling-section';
                     controlsContainer.style.gridColumn = '1 / -1';
                     controlsContainer.style.padding = '0';
                     controlsContainer.style.display = 'flex';
@@ -334,7 +334,7 @@ const observer = new MutationObserver((mutations) => {
                         opaValueText.textContent = `${Math.round(val * 100)}%`;
                         localStorage.setItem(STORAGE_KEYS.OPACITY, val);
                         window.postMessage({
-                            type: 'ROUTERECON_MAP_MOD_OPACITY',
+                            type: 'MOREMAPS_MAP_MOD_OPACITY',
                             value: val
                         }, '*');
                     });
@@ -388,7 +388,7 @@ const observer = new MutationObserver((mutations) => {
                         localStorage.setItem(STORAGE_KEYS.SATURATION_MAPBOX, mapboxVal);
 
                         window.postMessage({
-                            type: 'ROUTERECON_MAP_MOD_SATURATION',
+                            type: 'MOREMAPS_MAP_MOD_SATURATION',
                             value: mapboxVal
                         }, '*');
                     });
@@ -475,7 +475,7 @@ function createPanoramaButton() {
 
     // Create Provider Selector
     const selector = document.createElement('select');
-    selector.id = 'routerecon-panorama-provider-selector';
+    selector.id = 'moremaps-panorama-provider-selector';
     selector.style.cssText = `
         border: none !important;
         background: transparent !important;
@@ -511,7 +511,7 @@ function createPanoramaButton() {
     selector.addEventListener('change', (e) => {
         const val = e.target.value;
         localStorage.setItem(STORAGE_KEYS.PANO_PROVIDER, val);
-        window.postMessage({ type: 'ROUTERECON_API_KEY_UPDATED' }, '*');
+        window.postMessage({ type: 'MOREMAPS_API_KEY_UPDATED' }, '*');
     });
 
     controlGroup.appendChild(selector);
@@ -535,13 +535,13 @@ function createPanoramaButton() {
         }
 
         updatePanoramaUI(newState);
-        window.postMessage({ type: 'ROUTERECON_PANORAMA_TOGGLE', active: newState }, '*');
+        window.postMessage({ type: 'MOREMAPS_PANORAMA_TOGGLE', active: newState }, '*');
     });
 
     // Prepend to top-left to be above geolocate
     ctrlContainer.prepend(controlGroup);
 
-    console.log('Route Recon: Panorama control added!');
+    console.log('More Maps: Panorama control added!');
 }
 
 // --- Settings Button and Modal ---
@@ -551,11 +551,11 @@ let settingsButtonInjected = false;
 
 function showSettingsModal(showInstructions = false, highlightKey = null) {
     injectSettingsModal();
-    const modal = document.getElementById('routerecon-settings-modal');
+    const modal = document.getElementById('moremaps-settings-modal');
     if (modal) {
         modal.style.display = 'flex';
         if (showInstructions) {
-            const instr = document.getElementById('routerecon-api-instructions');
+            const instr = document.getElementById('moremaps-api-instructions');
             if (instr) instr.style.display = 'block';
         }
         if (highlightKey) {
@@ -570,10 +570,10 @@ function showSettingsModal(showInstructions = false, highlightKey = null) {
 }
 
 function injectSettingsModal() {
-    if (settingsModalInjected || document.getElementById('routerecon-settings-modal')) return;
+    if (settingsModalInjected || document.getElementById('moremaps-settings-modal')) return;
 
     const modal = document.createElement('div');
-    modal.id = 'routerecon-settings-modal';
+    modal.id = 'moremaps-settings-modal';
     modal.style.cssText = `
         position: fixed;
         top: 0;
@@ -744,7 +744,7 @@ function injectSettingsModal() {
         });
 
         modal.style.display = 'none';
-        window.postMessage({ type: 'ROUTERECON_API_KEY_UPDATED' }, '*');
+        window.postMessage({ type: 'MOREMAPS_API_KEY_UPDATED' }, '*');
     };
 
     const resetBtn = document.createElement('button');
@@ -768,11 +768,11 @@ function injectSettingsModal() {
     resetBtn.appendChild(resetText);
     resetBtn.onclick = () => {
         if (confirm(STRINGS.UI.DELETE_DATA_CONFIRM)) {
-            // Find all keys starting with routerecon_ and remove them
+            // Find all keys starting with moremaps_ and remove them
             const keysToRemove = [];
             for (let i = 0; i < localStorage.length; i++) {
                 const key = localStorage.key(i);
-                if (key && key.startsWith('routerecon_')) {
+                if (key && key.startsWith('moremaps_')) {
                     keysToRemove.push(key);
                 }
             }
@@ -857,7 +857,7 @@ function init() {
     createSettingsButton();
     injectSettingsModal();
 
-    console.log('Route Recon: UI Observer started');
+    console.log('More Maps: UI Observer started');
 }
 
 if (document.readyState === 'loading') {

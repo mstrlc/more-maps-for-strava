@@ -1,7 +1,7 @@
 /**
- * Route Recon for Strava - Configuration
+ * More Maps for Strava - Configuration
  */
-var RouteReconConfig = {
+var MoreMapsConfig = {
     SELECTORS: {
         CONTAINER: '.MapDisplayControl_options__6iIQA',
         BUTTON: 'MapDisplayControl_optionButton___nsae',
@@ -32,13 +32,13 @@ var RouteReconConfig = {
     ],
 
     STORAGE_KEYS: {
-        MAPY_KEY: 'routerecon_mapy_api_key',
-        GOOGLE_KEY: 'routerecon_google_api_key',
-        TF_KEY: 'routerecon_tf_api_key',
-        OPACITY: 'routerecon_opacity',
-        SATURATION_MAPBOX: 'routerecon_saturation_mapbox',
-        SATURATION_SLIDER: 'routerecon_saturation_slider',
-        ACTIVE_ID: 'routerecon_active_id',
-        PANO_PROVIDER: 'routerecon_pano_provider'
+        MAPY_KEY: 'moremaps_mapy_api_key',
+        GOOGLE_KEY: 'moremaps_google_api_key',
+        TF_KEY: 'moremaps_tf_api_key',
+        OPACITY: 'moremaps_opacity',
+        SATURATION_MAPBOX: 'moremaps_saturation_mapbox',
+        SATURATION_SLIDER: 'moremaps_saturation_slider',
+        ACTIVE_ID: 'moremaps_active_id',
+        PANO_PROVIDER: 'moremaps_pano_provider'
     }
 };

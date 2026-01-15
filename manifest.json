@@ -1,11 +1,11 @@
 {
     "manifest_version": 3,
-    "name": "Route Recon for Strava",
+    "name": "More Maps for Strava",
     "version": "1.0",
-    "description": "Adds additional map options to Strava.",
+    "description": "Adds additional map layers and panorama mode to Strava.",
     "browser_specific_settings": {
         "gecko": {
-            "id": "routerecon@mstrlc.eu",
+            "id": "moremaps@mstrlc.eu",
             "strict_min_version": "109.0",
             "data_collection_permissions": {
                 "required": [
