@@ -36,6 +36,13 @@
 
         // Inject sequentially
         await injectPageScript('constants.js');
+
+        // Inject Extension URL for panorama iframe via Meta tag (avoids CSP inline script issues)
+        const meta = document.createElement('meta');
+        meta.name = 'moremaps-extension-url';
+        meta.content = browser.runtime.getURL('');
+        document.head.appendChild(meta);
+
         await injectPageScript('strings.js');
         await injectPageScript('panorama.js');
         await injectPageScript('inject.js');

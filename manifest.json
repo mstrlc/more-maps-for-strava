@@ -32,6 +32,14 @@
             "run_at": "document_start"
         }
     ],
+    "sandbox": {
+        "pages": [
+            "panorama.html"
+        ]
+    },
+    "content_security_policy": {
+        "sandbox": "sandbox allow-scripts allow-forms allow-popups allow-modals; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://api.mapy.cz https://api.mapy.com https://maps.googleapis.com https://maps.google.com https://*.google.com https://*.googleusercontent.com; style-src 'self' 'unsafe-inline' https://api.mapy.cz https://fonts.googleapis.com; img-src 'self' data: https:; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self' https:;"
+    },
     "web_accessible_resources": [
         {
             "resources": [
@@ -39,6 +47,7 @@
                 "strings.js",
                 "inject.js",
                 "panorama.js",
+                "panorama.html",
                 "assets/mapycom/*",
                 "assets/osm/*",
                 "assets/google/*",

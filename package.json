@@ -4,7 +4,7 @@
   "description": "",
   "main": "constants.js",
   "scripts": {
-    "build": "rm -rf dist && mkdir -p dist/assets dist/icons && cp manifest.json browser-polyfill.js *.js LICENSE dist/ && cp -r assets/* dist/assets/ && cp -r icons/* dist/icons/",
+    "build": "rm -rf dist && mkdir -p dist/assets dist/icons && cp manifest.json browser-polyfill.js *.js *.html LICENSE dist/ && cp -r assets/* dist/assets/ && cp -r icons/* dist/icons/",
     "zip": "npm run build && cd dist && zip -r ../moremaps.zip ./*",
     "test": "echo \"Error: no test specified\" && exit 1"
   },

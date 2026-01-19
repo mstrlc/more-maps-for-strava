@@ -1,27 +1,25 @@
 /**
  * More Maps for Strava - Panorama Module
  * 
- * Handles Mapy.cz panorama integration with a small corner window.
+ * Handles Mapy.cz/Google panorama integration via a Sandboxed Iframe.
  * Runs in the page context.
  */
 
 (() => {
-    const { STRINGS, STORAGE_KEYS } = MoreMapsConfig;
+    const { STRINGS, STORAGE_KEYS, EXTENSION_URL } = MoreMapsConfig;
 
     const state = {
-        apiReady: false,
-        googleApiReady: false,
         active: false,
         expanded: false,
         window: null,
-        panorama: null, // Holds Mapy.cz pano or Google pano
+        iframe: null,
         marker: null,
         map: null,
         ratios: { width: 0.4, height: 0.4 },
         docked: { bottom: true, right: true },
-        handleClickBound: null,
         domClickBound: null,
-        lastYaw: 0, // Stored in radians
+        lastYaw: 0,
+        lastPos: null,
         provider: localStorage.getItem(STORAGE_KEYS.PANO_PROVIDER) || 'mapy'
     };
 
@@ -41,7 +39,6 @@
                     background: #1a1a1a; border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.4);
                     z-index: 10001; display: flex; flex-direction: column; overflow: hidden;
                 }
-                #moremaps-panorama-window.error-state { background: rgba(0, 0, 0, 0.2) !important; backdrop-filter: blur(4px); }
                 .pano-handle { position: absolute; z-index: 10005; }
                 .handle-t { top: 0; left: 0; right: 0; height: 10px; cursor: ns-resize; }
                 .handle-l { top: 0; left: 0; bottom: 0; width: 10px; cursor: ew-resize; }
@@ -78,19 +75,9 @@
                 #moremaps-panorama-drag-handle {
                     position: absolute; top: 0; left: 0; right: 0; height: 40px; z-index: 10002; cursor: move;
                 }
-                #moremaps-panorama-content { flex: 1; position: relative; overflow: hidden; }
-                #moremaps-panorama-loading {
-                    position: absolute; inset: 0; background: #1a1a1a; color: white;
-                    display: flex; flex-direction: column; align-items: center; justify-content: center;
-                    text-align: center; z-index: 10001;
-                }
-                #moremaps-panorama-window.error-state #moremaps-panorama-loading { background: transparent; }
-                .pano-spinner {
-                    width: 30px; height: 30px; border: 3px solid rgba(255,255,255,0.3);
-                    border-top-color: white; border-radius: 50%; animation: pano-spin 1s linear infinite;
-                    margin-bottom: 12px;
-                }
-                @keyframes pano-spin { to { transform: rotate(360deg); } }
+                #moremaps-panorama-content { flex: 1; position: relative; overflow: hidden; background: #000; }
+                iframe#moremaps-pano-frame { width: 100%; height: 100%; border: none; }
+                
                 body.moremaps-panorama-active .mapboxgl-canvas { cursor: crosshair !important; }
                 body.moremaps-panorama-active .MapPointerTooltip_mapTooltip__gaOkC,
                 body.moremaps-panorama-active .mapboxgl-popup { display: none !important; }
@@ -146,18 +133,22 @@
             const content = document.createElement('div');
             content.id = 'moremaps-panorama-content';
 
-            const loading = document.createElement('div');
-            loading.id = 'moremaps-panorama-loading';
+            // Create Iframe
+            const iframe = document.createElement('iframe');
+            iframe.id = 'moremaps-pano-frame';
 
-            const spinner = document.createElement('div');
-            spinner.className = 'pano-spinner';
+            // Get Extension URL from Config (legacy) or Meta Tag (CSP safe)
+            let extUrl = MoreMapsConfig.EXTENSION_URL;
+            if (!extUrl) {
+                const meta = document.querySelector('meta[name="moremaps-extension-url"]');
+                if (meta) extUrl = meta.content;
+            }
+            extUrl = extUrl || '';
 
-            const loadingText = document.createElement('div');
-            loadingText.textContent = STRINGS.PANORAMA.LOADING;
+            iframe.src = extUrl + 'panorama.html';
+            state.iframe = iframe;
 
-            loading.appendChild(spinner);
-            loading.appendChild(loadingText);
-            content.appendChild(loading);
+            content.appendChild(iframe);
 
             win.appendChild(handle);
             win.appendChild(segmentedControl);
@@ -176,65 +167,12 @@
             Draggable.init(win, win.querySelector('#moremaps-panorama-drag-handle'));
             state.window = win;
 
-            // Initialize ratios based on initial size (600x450)
+            // Initialize ratios
             state.ratios.width = 600 / window.innerWidth;
             state.ratios.height = 450 / window.innerHeight;
 
-            // Initial positioning
             Utils.enforceBounds(win);
-
             return win;
-        },
-
-        showError(msg) {
-            const loading = state.window.querySelector('#moremaps-panorama-loading');
-            const viewer = state.window.querySelector('#pano-v');
-            if (viewer) viewer.style.display = 'none';
-
-            loading.style.display = 'flex';
-
-            // Clear existing loading content
-            while (loading.firstChild) loading.removeChild(loading.firstChild);
-
-            const errorDiv = document.createElement('div');
-            errorDiv.style.padding = '24px';
-
-            const title = document.createElement('div');
-            title.style.cssText = 'font-weight:700; color:#fc4c02; margin-bottom:8px;';
-            title.textContent = msg.title || STRINGS.PANORAMA.ERROR_TITLE;
-
-            const text = document.createElement('div');
-            text.style.cssText = 'font-size:13px; color:white; font-weight:500;';
-            text.innerHTML = msg.text;
-
-            errorDiv.appendChild(title);
-            errorDiv.appendChild(text);
-
-            // Add Switch Button if we can
-            const otherProvider = state.provider === 'mapy' ? 'google' : 'mapy';
-            const switchBtn = document.createElement('button');
-            switchBtn.style.cssText = `
-                margin-top: 16px;
-                padding: 8px 16px;
-                background: #fc4c02;
-                color: white;
-                border: none;
-                border-radius: 4px;
-                font-size: 12px;
-                font-weight: 600;
-                cursor: pointer;
-            `;
-            switchBtn.textContent = `${STRINGS.SETTINGS.TRY_PROVIDER_PREFIX}${otherProvider === 'mapy' ? STRINGS.SETTINGS.PROVIDER_MAPY : STRINGS.SETTINGS.PROVIDER_GOOGLE}`;
-            switchBtn.onclick = () => {
-                const newProvider = state.provider === 'mapy' ? 'google' : 'mapy';
-                localStorage.setItem(STORAGE_KEYS.PANO_PROVIDER, newProvider);
-                window.postMessage({ type: 'MOREMAPS_API_KEY_UPDATED' }, '*');
-            };
-            errorDiv.appendChild(switchBtn);
-
-            loading.appendChild(errorDiv);
-
-            state.window.classList.add('error-state');
         }
     };
 
@@ -255,7 +193,6 @@
             svg.setAttribute("height", "32");
             svg.style.overflow = "visible";
 
-            // Create filter
             const filter = document.createElementNS(svgNS, "filter");
             filter.setAttribute("id", "marker-shadow");
             const dropShadow = document.createElementNS(svgNS, "feDropShadow");
@@ -266,18 +203,15 @@
             filter.appendChild(dropShadow);
             svg.appendChild(filter);
 
-            // Create main group
             const gMain = document.createElementNS(svgNS, "g");
             gMain.setAttribute("transform", "translate(16, 16)");
             gMain.setAttribute("filter", "url(#marker-shadow)");
 
-            // Create rotation group
             const gRot = document.createElementNS(svgNS, "g");
             gRot.className.baseVal = "rot";
             gRot.style.transform = `rotate(${deg}deg)`;
             gRot.style.transition = "transform 0.1s ease-out";
 
-            // Create path
             const path = document.createElementNS(svgNS, "path");
             path.setAttribute("d", "M 0 -15 L 7 -5.6 A 9 9 0 1 1 -7 -5.6 Z");
             path.setAttribute("fill", "#FC4C02");
@@ -396,25 +330,18 @@
 
     const Utils = {
         getBottomOffset() {
-            // Strava's bottom bar (route planning, etc.)
             const bar = document.querySelector('[class*="BottomBar_bottomBar"]');
-            if (bar && bar.offsetHeight > 0) {
-                // If the bar is visible, we want to stay above it
-                return bar.offsetHeight + 20;
-            }
-            return 20; // Default padding from bottom
+            if (bar && bar.offsetHeight > 0) return bar.offsetHeight + 20;
+            return 20;
         },
-
         enforceBounds(el) {
             if (!el) return;
             const bOffset = this.getBottomOffset();
             const w = window.innerWidth, h = window.innerHeight;
-
             let tw = Math.max(300, Math.min(w * state.ratios.width, w - 40));
             let th = Math.max(200, Math.min(h * state.ratios.height, h - 145 - bOffset));
             el.style.width = tw + 'px';
             el.style.height = th + 'px';
-
             if (state.docked.bottom) el.style.bottom = bOffset + 'px';
             if (state.docked.right) el.style.right = '20px';
         }
@@ -436,22 +363,16 @@
             if (canvas) {
                 state.domClickBound = (e) => {
                     if (!state.active) return;
-                    // Intercept and stop the click before it reaches Strava's route builder
                     e.stopImmediatePropagation();
                     e.preventDefault();
-
                     const rect = canvas.getBoundingClientRect();
                     const x = e.clientX - rect.left;
                     const y = e.clientY - rect.top;
                     const lngLat = map.unproject([x, y]);
-
-                    console.log('More Maps: Panorama Click Intercepted');
                     this.open(lngLat.lng, lngLat.lat);
                 };
-                // Register in CAPTURE phase to be first
                 canvas.addEventListener('click', state.domClickBound, true);
             }
-
             this.setupLayoutObserver();
         },
 
@@ -468,16 +389,7 @@
             }
         },
 
-        handleMapClick(e) {
-            if (!state.active) return;
-            if (e.originalEvent) {
-                e.originalEvent.stopPropagation();
-                e.originalEvent.stopImmediatePropagation();
-            }
-            this.open(e.lngLat.lng, e.lngLat.lat);
-        },
-
-        async open(lon, lat) {
+        open(lon, lat) {
             const provider = state.provider;
             const key = provider === 'mapy' ? localStorage.getItem(STORAGE_KEYS.MAPY_KEY) : localStorage.getItem(STORAGE_KEYS.GOOGLE_KEY);
 
@@ -492,240 +404,58 @@
             }
 
             state.lastPos = { lon, lat };
+            PanoramaUI.createWindow(() => this.handleUserClose());
 
-            if (provider === 'google' && !state.googleApiReady) await this.loadGoogleAPI();
-            if (provider === 'mapy' && !state.apiReady) await this.loadAPI();
+            // Wait for iframe to be ready?
+            // We can just post message, if it's not ready it might miss it.
+            // Better to use onload or retry.
+            // Since it's a local file, it should load fast.
+            // Using a loop to ensure frame is there.
 
-            const win = PanoramaUI.createWindow(() => this.handleUserClose());
-            const content = win.querySelector('#moremaps-panorama-content');
-            const loading = win.querySelector('#moremaps-panorama-loading');
-
-            loading.style.display = 'flex';
-
-            // Restore loading contents if they were replaced by an error message
-            if (!loading.querySelector('.pano-spinner')) {
-                while (loading.firstChild) loading.removeChild(loading.firstChild);
-                const spinner = document.createElement('div');
-                spinner.className = 'pano-spinner';
-                const loadingText = document.createElement('div');
-                loadingText.textContent = STRINGS.PANORAMA.LOADING;
-                loading.appendChild(spinner);
-                loading.appendChild(loadingText);
-            }
-
-            win.classList.remove('error-state');
-
-            try {
-                // Clear existing
-                if (state.panorama) {
-                    if (state.panorama.destroy) state.panorama.destroy();
-                    state.panorama = null;
+            const attemptPost = (tries = 0) => {
+                if (state.iframe && state.iframe.contentWindow) {
+                    state.iframe.contentWindow.postMessage({
+                        type: 'INIT_PANO',
+                        provider,
+                        apiKey: key,
+                        lon,
+                        lat,
+                        yaw: state.lastYaw
+                    }, '*');
+                } else if (tries < 10) {
+                    setTimeout(() => attemptPost(tries + 1), 200);
                 }
+            };
 
-                let viewer = content.querySelector('#pano-v');
-                if (!viewer) {
-                    viewer = document.createElement('div');
-                    viewer.id = 'pano-v';
-                    viewer.style.cssText = 'width:100%; height:100%;';
-                    content.appendChild(viewer);
-                } else {
-                    viewer.style.display = 'block';
-                    while (viewer.firstChild) viewer.removeChild(viewer.firstChild);
-                }
+            // If iframe was just created, wait a bit
+            setTimeout(() => attemptPost(), 200);
 
-                if (provider === 'google') {
-                    await this.openGoogle(viewer, lon, lat, state.lastYaw || 0);
-                } else {
-                    await this.openMapy(viewer, lon, lat, state.lastYaw || 0);
-                }
-
-                loading.style.display = 'none';
-            } catch (e) {
-                console.error('More Maps: Pano Open Error', e);
-                PanoramaUI.showError({ title: STRINGS.PANORAMA.ERROR_TITLE, text: e.message });
+            if (state.active && state.map) {
+                PanoramaMarker.create(state.map, lon, lat, state.lastYaw);
             }
         },
 
-        async openMapy(viewer, lon, lat, initialYaw = 0) {
-            const api = window.Panorama || (window.SMap && window.SMap.Pano);
-            if (!api) throw new Error('Mapy.cz Panorama API not found');
-
-            const pano = await api.panoramaFromPosition({
-                parent: viewer, lon, lat, radius: 100, lang: 'en', yaw: initialYaw,
-                fov: Math.PI / 2, showNavigation: true,
-                apiKey: localStorage.getItem(STORAGE_KEYS.MAPY_KEY)
-            });
-
-            state.panorama = pano;
-
-            if (pano.errorCode && pano.errorCode !== 'NONE') {
-                throw new Error(STRINGS.PANORAMA.NO_PANO_TEXT);
-            }
-
-            const cam = pano.getCamera();
-            state.lastYaw = cam.yaw;
-            state.lastPos = { lon: pano.info.lon, lat: pano.info.lat };
-            PanoramaMarker.create(state.map, state.lastPos.lon, state.lastPos.lat, state.lastYaw);
-
-            pano.addListener('pano-view', () => {
-                state.lastYaw = pano.getCamera().yaw;
-                PanoramaMarker.updateDir(state.lastYaw);
-            });
-            pano.addListener('pano-place', (p) => {
-                if (p.info) {
-                    state.lastPos = { lon: p.info.lon, lat: p.info.lat };
-                    state.lastYaw = pano.getCamera().yaw;
-                    PanoramaMarker.create(state.map, state.lastPos.lon, state.lastPos.lat, state.lastYaw);
-                }
-            });
-        },
-
-        async openGoogle(viewer, lon, lat, initialYaw = 0) {
-            if (!window.google || !window.google.maps) throw new Error('Google Maps API not loaded');
-
-            const sv = new google.maps.StreetViewService();
-            const location = { lat, lng: lon };
-
-            const result = await new Promise((resolve, reject) => {
-                sv.getPanorama({ location, radius: 100 }, (data, status) => {
-                    if (status === "OK") resolve(data);
-                    else reject(new Error(STRINGS.PANORAMA.NO_GOOGLE_PANO_TEXT));
-                });
-            });
-
-            const pano = new google.maps.StreetViewPanorama(viewer, {
-                position: result.location.latLng,
-                pov: { heading: (initialYaw * 180 / Math.PI), pitch: 0 },
-                zoom: 1,
-                addressControl: false,
-                linksControl: true,
-                panControl: true,
-                enableCloseButton: false,
-                fullscreenControl: false
-            });
-
-            state.panorama = pano;
-
-            const pos = result.location.latLng;
-            state.lastPos = { lon: pos.lng(), lat: pos.lat() };
-            state.lastYaw = initialYaw;
-            PanoramaMarker.create(state.map, state.lastPos.lon, state.lastPos.lat, state.lastYaw);
-
-            pano.addListener('pov_changed', () => {
-                state.lastYaw = pano.getPov().heading * Math.PI / 180;
-                PanoramaMarker.updateDir(state.lastYaw);
-            });
-
-            pano.addListener('position_changed', () => {
-                const p = pano.getPosition();
-                state.lastPos = { lon: p.lng(), lat: p.lat() };
-                state.lastYaw = pano.getPov().heading * Math.PI / 180;
-                PanoramaMarker.create(state.map, state.lastPos.lon, state.lastPos.lat, state.lastYaw);
-            });
-        },
-
-        // Explicitly called when user clicks 'X'
         handleUserClose() {
             this.disable();
             this.closeWindow();
             window.postMessage({ type: 'MOREMAPS_PANORAMA_TOGGLE', active: false }, '*');
         },
 
-        // Internal cleanup
         closeWindow() {
-            if (state.window) { state.window.remove(); state.window = null; }
-            if (state.panorama) { state.panorama.destroy(); state.panorama = null; }
+            if (state.window) { state.window.remove(); state.window = null; state.iframe = null; }
             PanoramaMarker.remove();
         },
 
-        close() { this.closeWindow(); }, // For backward compatibility if needed
-
-        loadAPI() {
-            if (window.Panorama || (window.SMap && window.SMap.Pano)) {
-                state.apiReady = true;
-                return Promise.resolve();
-            }
-
-            return new Promise((resolve, reject) => {
-                const key = localStorage.getItem(STORAGE_KEYS.MAPY_KEY);
-                console.log('More Maps: Loading Panorama API...');
-                const s = document.createElement('script');
-                s.src = `https://api.mapy.cz/js/panorama/v1/panorama.js${key ? `?apikey=${key}` : ''}`;
-                s.onload = () => {
-                    const check = (a = 0) => {
-                        if (window.Panorama || (window.SMap && window.SMap.Pano)) {
-                            state.apiReady = true;
-                            console.log('More Maps: Panorama API Ready');
-                            resolve();
-                        }
-                        else if (a < 50) setTimeout(() => check(a + 1), 100);
-                        else reject('API Timeout');
-                    };
-                    check();
-                };
-                s.onerror = (e) => {
-                    console.error('More Maps: Failed to load Panorama JS', e);
-                    reject(e);
-                };
-                document.head.appendChild(s);
-            });
-        },
-
-        loadGoogleAPI() {
-            if (state.googleApiReady) return Promise.resolve();
-
-            return new Promise((resolve, reject) => {
-                const key = localStorage.getItem(STORAGE_KEYS.GOOGLE_KEY);
-                console.log('More Maps: Loading Google Maps API...');
-                const s = document.createElement('script');
-                s.src = `https://maps.googleapis.com/maps/api/js?key=${key || ''}`;
-                s.onload = () => {
-                    const check = (a = 0) => {
-                        if (window.google && window.google.maps) {
-                            state.googleApiReady = true;
-                            console.log('More Maps: Google Maps API Ready');
-                            resolve();
-                        }
-                        else if (a < 50) setTimeout(() => check(a + 1), 100);
-                        else reject('Google API Timeout');
-                    };
-                    check();
-                };
-                s.onerror = (e) => {
-                    console.error('More Maps: Failed to load Google Maps JS', e);
-                    reject(e);
-                };
-                document.head.appendChild(s);
-            });
-        },
-
         setupLayoutObserver() {
-            // Watch for any DOM changes that might indicate the bottom bar appearing/sized
             const observer = new MutationObserver(() => {
-                if (state.active && state.window) {
-                    Utils.enforceBounds(state.window);
-                }
+                if (state.active && state.window) Utils.enforceBounds(state.window);
             });
-
-            observer.observe(document.body, {
-                childList: true,
-                subtree: true,
-                attributes: true,
-                attributeFilter: ['class', 'style']
-            });
-
-            // Handle window resizing
+            observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['class', 'style'] });
             window.addEventListener('resize', () => {
-                if (state.active && state.window) {
-                    Utils.enforceBounds(state.window);
-                }
+                if (state.active && state.window) Utils.enforceBounds(state.window);
             });
-
-            // Periodically check as a fallback (Strava's React layout changes can be tricky)
             setInterval(() => {
-                if (state.active && state.window) {
-                    Utils.enforceBounds(state.window);
-                }
+                if (state.active && state.window) Utils.enforceBounds(state.window);
             }, 2000);
         }
     };
@@ -737,26 +467,30 @@
     };
 
     window.addEventListener('message', (event) => {
-        if (event.source !== window || !event.data) return;
+        if (!event.data) return;
 
         if (event.data.type === 'MOREMAPS_API_KEY_UPDATED') {
             const newProvider = localStorage.getItem(STORAGE_KEYS.PANO_PROVIDER) || 'mapy';
             state.provider = newProvider;
-
-            // Sync Segmented Control if it exists
             const ctrl = document.getElementById('moremaps-panorama-segmented-control');
             if (ctrl) {
                 ctrl.querySelectorAll('.pano-segment').forEach(seg => {
                     seg.classList.toggle('active', seg.dataset.provider === newProvider);
                 });
             }
-
             if (state.active && state.lastPos) {
                 PanoramaManager.open(state.lastPos.lon, state.lastPos.lat);
             }
-            // Reset ready states to force reload with new keys
-            state.apiReady = false;
-            state.googleApiReady = false;
+        }
+        else if (event.data.type === 'PANO_YAW') {
+            state.lastYaw = event.data.yaw;
+            PanoramaMarker.updateDir(state.lastYaw);
+        }
+        else if (event.data.type === 'PANO_POS') {
+            state.lastPos = { lon: event.data.lon, lat: event.data.lat };
+            if (state.active && state.map) {
+                PanoramaMarker.create(state.map, state.lastPos.lon, state.lastPos.lat, state.lastYaw);
+            }
         }
     });
 })();

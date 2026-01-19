@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <title>More Maps Panorama</title>
+    <style>
+        body,
+        html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background: #1a1a1a;
+        }
+
+        #pano-container {
+            width: 100%;
+            height: 100%;
+        }
+
+        .error-msg {
+            color: #fc4c02;
+            padding: 20px;
+            font-family: sans-serif;
+            text-align: center;
+            top: 50%;
+            position: relative;
+            transform: translateY(-50%);
+        }
+    </style>
+</head>
+
+<body>
+    <div id="pano-container"></div>
+
+    <script>
+        const state = {
+            provider: null,
+            apiKey: null,
+            pano: null,
+            lastYaw: 0,
+            apiLoaded: { google: false, mapy: false }
+        };
+
+        const container = document.getElementById('pano-container');
+
+        window.addEventListener('message', async (event) => {
+            const data = event.data;
+            if (!data || !data.type) return;
+
+            if (data.type === 'INIT_PANO') {
+                await openPanorama(data.provider, data.apiKey, data.lon, data.lat, data.yaw);
+            } else if (data.type === 'RESIZE') {
+                if (state.pano && state.provider === 'google') {
+                    google.maps.event.trigger(state.pano, 'resize');
+                }
+            }
+        });
+
+        async function loadScript(src) {
+            return new Promise((resolve, reject) => {
+                const s = document.createElement('script');
+                s.src = src;
+                s.onload = resolve;
+                s.onerror = reject;
+                document.head.appendChild(s);
+            });
+        }
+
+        async function openPanorama(provider, apiKey, lon, lat, yaw) {
+            state.provider = provider;
+            state.apiKey = apiKey;
+            state.lastYaw = yaw || 0;
+
+            try {
+                if (state.pano) {
+                    // Cleanup old pano if needed (Mapy.cz doesn't have explicit destroy, relies on DOM removal)
+                    // Google Maps handles it when container is reused? 
+                    // Best to clear container.
+                    container.innerHTML = '';
+                    state.pano = null;
+                }
+
+                if (provider === 'google') {
+                    if (!state.apiLoaded.google) {
+                        await loadScript(`https://maps.googleapis.com/maps/api/js?key=${apiKey}`);
+                        state.apiLoaded.google = true;
+                    }
+                    renderGoogle(lon, lat, state.lastYaw);
+                } else {
+                    // Mapy.cz
+                    if (!state.apiLoaded.mapy) {
+                        // Loader
+                        await loadScript(`https://api.mapy.cz/js/panorama/v1/panorama.js${apiKey ? `?apikey=${apiKey}` : ''}`);
+                        // Wait for window.Panorama
+                        await waitForMapy();
+                        state.apiLoaded.mapy = true;
+                    }
+                    renderMapy(lon, lat, state.lastYaw);
+                }
+            } catch (e) {
+                console.error(e);
+                container.innerHTML = `<div class="error-msg">${e.message || 'Error loading panorama'}</div>`;
+            }
+        }
+
+        function waitForMapy() {
+            return new Promise((resolve, reject) => {
+                let attempts = 0;
+                const check = () => {
+                    if (window.Panorama || (window.SMap && window.SMap.Pano)) resolve();
+                    else if (attempts++ < 50) setTimeout(check, 100);
+                    else reject(new Error('Mapy.cz API timeout'));
+                };
+                check();
+            });
+        }
+
+        function renderGoogle(lon, lat, yaw) {
+            const sv = new google.maps.StreetViewService();
+            const location = { lat, lng: lon };
+
+            sv.getPanorama({ location, radius: 100 }, (data, status) => {
+                if (status === 'OK') {
+                    const pano = new google.maps.StreetViewPanorama(container, {
+                        position: data.location.latLng,
+                        pov: { heading: (yaw * 180 / Math.PI), pitch: 0 },
+                        zoom: 1,
+                        addressControl: false,
+                        linksControl: true,
+                        panControl: true,
+                        enableCloseButton: false,
+                        fullscreenControl: false
+                    });
+
+                    state.pano = pano;
+
+                    // Events
+                    pano.addListener('pov_changed', () => {
+                        const heading = pano.getPov().heading;
+                        const rad = heading * Math.PI / 180;
+                        window.parent.postMessage({ type: 'PANO_YAW', yaw: rad }, '*');
+                    });
+
+                    pano.addListener('position_changed', () => {
+                        const pos = pano.getPosition();
+                        window.parent.postMessage({ type: 'PANO_POS', lon: pos.lng(), lat: pos.lat() }, '*');
+                    });
+                } else {
+                    container.innerHTML = `<div class="error-msg">No Google Street View found here.</div>`;
+                }
+            });
+        }
+
+        function renderMapy(lon, lat, yaw) {
+            const api = window.Panorama || (window.SMap && window.SMap.Pano);
+            // We use the container directly
+            // Mapy.cz expects container to be in DOM
+
+            // Create a sub-div because clearing container might remove it?
+            // Actually container.innerHTML = '' cleared it.
+
+            api.panoramaFromPosition({
+                parent: container,
+                lon, lat,
+                radius: 100,
+                lang: 'en',
+                yaw: yaw,
+                fov: Math.PI / 2,
+                showNavigation: true,
+                apiKey: state.apiKey
+            }).then(pano => {
+                state.pano = pano;
+
+                if (pano.errorCode && pano.errorCode !== 'NONE') {
+                    container.innerHTML = `<div class="error-msg">No Mapy.cz panorama found here.</div>`;
+                    return;
+                }
+
+                // Events
+                // Mapy.cz uses 'pano-view' for rotation, 'pano-place' for movement
+                pano.addListener('pano-view', () => {
+                    const cam = pano.getCamera();
+                    window.parent.postMessage({ type: 'PANO_YAW', yaw: cam.yaw }, '*');
+                });
+
+                pano.addListener('pano-place', (p) => {
+                    if (p.info) {
+                        window.parent.postMessage({ type: 'PANO_POS', lon: p.info.lon, lat: p.info.lat }, '*');
+                    }
+                });
+
+                // Initial sync
+                window.parent.postMessage({ type: 'PANO_POS', lon: pano.info.lon, lat: pano.info.lat }, '*');
+
+            }).catch(e => {
+                container.innerHTML = `<div class="error-msg">${e.message}</div>`;
+            });
+        }
+    </script>
+</body>
+
+</html>
