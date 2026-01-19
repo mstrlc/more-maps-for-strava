@@ -6,9 +6,9 @@ A browser extension that adds additional map layers and a panorama mode to Strav
 
 <table align="center">
   <tr>
-    <td align="center"><img src="assets/screenshots/heatmap.png" alt="Heatmap with custom layers" height="400" /></td>
-    <td align="center"><img src="assets/screenshots/routeplanner.png" alt="Route planner with panorama" height="400" /></td>
-    <td align="center"><img src="assets/screenshots/layers.png" alt="Available map layers" height="400" /></td>
+    <td align="center"><img src="assets/screenshots/heatmap.jpeg" alt="Heatmap with custom layers" height="400" /></td>
+    <td align="center"><img src="assets/screenshots/routeplanner.jpeg" alt="Route planner with panorama" height="400" /></td>
+    <td align="center"><img src="assets/screenshots/layers.jpeg" alt="Available map layers" height="400" /></td>
   </tr>
   <tr>
     <td align="center"><sub>Heatmap with Mapy.cz Outdoor and Panorama</sub></td>
