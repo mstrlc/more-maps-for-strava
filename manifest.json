@@ -1,7 +1,7 @@
 {
     "manifest_version": 3,
     "name": "More Maps for Strava",
-    "version": "1.0",
+    "version": "1.0.3",
     "description": "Adds additional map layers and panorama mode to Strava.",
     "browser_specific_settings": {
         "gecko": {
