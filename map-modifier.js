@@ -864,6 +864,24 @@ function init() {
     createSettingsButton();
     injectSettingsModal();
 
+    document.addEventListener('keydown', (e) => {
+        if (e.key !== 'p' && e.key !== 'P') return;
+        const tag = document.activeElement?.tagName;
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+
+        const newState = !isPanoramaActive;
+        if (newState) {
+            const provider = localStorage.getItem(STORAGE_KEYS.PANO_PROVIDER) || 'mapy';
+            const key = provider === 'mapy' ? localStorage.getItem(STORAGE_KEYS.MAPY_KEY) : localStorage.getItem(STORAGE_KEYS.GOOGLE_KEY);
+            if (!key) {
+                showSettingsModal(true, provider === 'mapy' ? STORAGE_KEYS.MAPY_KEY : STORAGE_KEYS.GOOGLE_KEY);
+                return;
+            }
+        }
+        updatePanoramaUI(newState);
+        window.postMessage({ type: 'MOREMAPS_PANORAMA_TOGGLE', active: newState }, '*');
+    });
+
     console.log('More Maps: UI Observer started');
 }
 
