@@ -6,7 +6,9 @@ const state = {
     apiLoaded: { google: false, mapy: false }
 };
 
+const isFirefox = navigator.userAgent.includes('Firefox');
 const container = document.getElementById('pano-container');
+const embedFrame = document.getElementById('pano-embed');
 
 window.addEventListener('message', async (event) => {
     const data = event.data;
@@ -15,51 +17,29 @@ window.addEventListener('message', async (event) => {
     if (data.type === 'INIT_PANO') {
         await openPanorama(data.provider, data.apiKey, data.lon, data.lat, data.yaw);
     } else if (data.type === 'RESIZE') {
-        if (state.pano && state.provider === 'google') {
+        if (state.pano && state.provider === 'google' && !isFirefox) {
             google.maps.event.trigger(state.pano, 'resize');
         }
     }
 });
 
 function loadGoogleMaps(apiKey) {
+    if (state.apiLoaded.google) return Promise.resolve();
     return new Promise((resolve, reject) => {
-        if (state.apiLoaded.google) return resolve();
-        
         const s = document.createElement('script');
         s.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}`;
-        s.async = true;
-        s.defer = true;
-        s.onload = () => {
-             state.apiLoaded.google = true;
-             resolve();
-        };
-        s.onerror = (e) => reject(new Error('Failed to load Google Maps API'));
+        s.onload = () => { state.apiLoaded.google = true; resolve(); };
+        s.onerror = () => reject(new Error('Failed to load Google Maps API'));
         document.head.appendChild(s);
     });
 }
 
-function loadMapyCz(apiKey) {
-    return new Promise((resolve, reject) => {
-        if (state.apiLoaded.mapy) return resolve();
-        
-        const s = document.createElement('script');
-        // Mapy.cz requires dynamic loading sometimes or just the main script
-        s.src = `https://api.mapy.cz/js/panorama/v1/panorama.js${apiKey ? `?apikey=${apiKey}` : ''}`;
-        s.async = true;
-        s.defer = true;
-        s.onload = async () => {
-             // Wait for window.Panorama
-             try {
-                await waitForMapy();
-                state.apiLoaded.mapy = true;
-                resolve();
-             } catch (e) {
-                reject(e);
-             }
-        };
-        s.onerror = (e) => reject(new Error('Failed to load Mapy.cz API'));
-        document.head.appendChild(s);
-    });
+async function loadMapyCz() {
+    if (state.apiLoaded.mapy) return;
+    // In Firefox, panorama-mapy-sdk.js is loaded as a local script tag in panorama.html.
+    // In Chrome (sandboxed page), it's also loaded locally — no dynamic loading needed.
+    await waitForMapy();
+    state.apiLoaded.mapy = true;
 }
 
 async function openPanorama(provider, apiKey, lon, lat, yaw) {
@@ -68,16 +48,21 @@ async function openPanorama(provider, apiKey, lon, lat, yaw) {
     state.lastYaw = yaw || 0;
 
     try {
-        if (state.pano) {
-            container.innerHTML = '';
-            state.pano = null;
-        }
+        container.innerHTML = '';
+        container.style.display = 'block';
+        embedFrame.style.display = 'none';
+        embedFrame.src = '';
+        state.pano = null;
 
         if (provider === 'google') {
-            await loadGoogleMaps(apiKey);
-            renderGoogle(lon, lat, state.lastYaw);
+            if (isFirefox) {
+                renderGoogleEmbed(lon, lat, state.lastYaw);
+            } else {
+                await loadGoogleMaps(apiKey);
+                renderGoogle(lon, lat, state.lastYaw);
+            }
         } else {
-            await loadMapyCz(apiKey);
+            await loadMapyCz();
             renderMapy(lon, lat, state.lastYaw);
         }
     } catch (e) {
@@ -96,6 +81,14 @@ function waitForMapy() {
         };
         check();
     });
+}
+
+function renderGoogleEmbed(lon, lat, yaw) {
+    const heading = Math.round(yaw * 180 / Math.PI);
+    const src = `https://www.google.com/maps/embed/v1/streetview?key=${state.apiKey}&location=${lat},${lon}&heading=${heading}&fov=90&pitch=0`;
+    container.style.display = 'none';
+    embedFrame.style.display = 'block';
+    embedFrame.src = src;
 }
 
 function renderGoogle(lon, lat, yaw) {
@@ -117,11 +110,9 @@ function renderGoogle(lon, lat, yaw) {
 
             state.pano = pano;
 
-            // Events
             pano.addListener('pov_changed', () => {
                 const heading = pano.getPov().heading;
-                const rad = heading * Math.PI / 180;
-                window.parent.postMessage({ type: 'PANO_YAW', yaw: rad }, '*');
+                window.parent.postMessage({ type: 'PANO_YAW', yaw: heading * Math.PI / 180 }, '*');
             });
 
             pano.addListener('position_changed', () => {
@@ -136,7 +127,7 @@ function renderGoogle(lon, lat, yaw) {
 
 function renderMapy(lon, lat, yaw) {
     const api = window.Panorama || (window.SMap && window.SMap.Pano);
-    
+
     api.panoramaFromPosition({
         parent: container,
         lon, lat,
@@ -154,7 +145,6 @@ function renderMapy(lon, lat, yaw) {
             return;
         }
 
-        // Events
         pano.addListener('pano-view', () => {
             const cam = pano.getCamera();
             window.parent.postMessage({ type: 'PANO_YAW', yaw: cam.yaw }, '*');
@@ -166,7 +156,6 @@ function renderMapy(lon, lat, yaw) {
             }
         });
 
-        // Initial sync
         window.parent.postMessage({ type: 'PANO_POS', lon: pano.info.lon, lat: pano.info.lat }, '*');
 
     }).catch(e => {
