@@ -2,6 +2,16 @@
 
 A browser extension that adds additional map layers and a panorama mode to Strava's route builder.
 
+<p align="center">
+  <a href="https://chromewebstore.google.com/detail/more-maps-for-strava/adpgjdeigiekdjnjionhhblgfpmkionl">
+    <img src="https://storage.googleapis.com/web-dev-uploads/image/WlD8wC6g8khYWPJUsQceQkhXSlv1/UV4C4sCnBz92Ynx4SKeh.png" alt="Available in the Chrome Web Store" height="58" />
+  </a>
+  &nbsp;
+  <a href="https://addons.mozilla.org/en-US/firefox/addon/more-maps-for-strava/">
+    <img src="https://blog.mozilla.org/addons/files/2020/04/get-the-addon-fx-apr-2020.svg" alt="Get the Add-on for Firefox" height="58" />
+  </a>
+</p>
+
 ## Screenshots
 
 <table align="center">
@@ -34,7 +44,7 @@ Click anywhere on the map to view street-level imagery:
 - **Mapy.cz Panorama** - Local coverage in Czech Republic
 - **Google Street View** - Global coverage
 
-Switch between providers with the control in the panorama window.
+Switch between providers with the control in the panorama window. Press **`P`** to toggle panorama mode on/off.
 
 ### 🎨 Map Styling Controls
 
@@ -45,13 +55,22 @@ Fine-tune your map appearance:
 
 ## Installation
 
-### Web Store
+### Chrome / Edge
 
-<!-- TODO: Add links to Firefox Add-ons and Chrome Web Store once published -->
+<a href="https://chromewebstore.google.com/detail/more-maps-for-strava/adpgjdeigiekdjnjionhhblgfpmkionl">
+  <img src="https://storage.googleapis.com/web-dev-uploads/image/WlD8wC6g8khYWPJUsQceQkhXSlv1/UV4C4sCnBz92Ynx4SKeh.png" alt="Available in the Chrome Web Store" height="58" />
+</a>
 
-*Coming soon to Firefox Add-ons and Chrome Web Store.*
+### Firefox
+
+<a href="https://addons.mozilla.org/en-US/firefox/addon/more-maps-for-strava/">
+  <img src="https://blog.mozilla.org/addons/files/2020/04/get-the-addon-fx-apr-2020.svg" alt="Get the Add-on for Firefox" height="58" />
+</a>
 
 ### Manual
+
+<details>
+<summary>Load unpacked from a release</summary>
 
 #### Firefox
 
@@ -65,6 +84,8 @@ Fine-tune your map appearance:
 2. Navigate to `chrome://extensions` (or `edge://extensions`)
 3. Enable "Developer mode"
 4. Click "Load unpacked" and select the extension folder
+
+</details>
 
 ## Configuration
 
@@ -90,25 +111,18 @@ Switch between Mapy.cz and Google Street View:
 
 1. Open [Strava Heatmap](https://www.strava.com/maps) or the [Route Builder](https://www.strava.com/maps/create)
 2. Click the map layer menu to see additional options
-3. To enable panorama mode, click the eye icon in the top-left map controls
+3. To enable panorama mode, click the eye icon or press **`P`**
 4. Click anywhere on the map to view street-level imagery
 
 ## Development
 
-### Build
-
 ```bash
 npm install
-npm run build
+npm run build   # copies sources to dist/
+npm run zip     # builds dist/ and packages into moremaps.zip
 ```
 
-### Package
-
-```bash
-npm run zip
-```
-
-This creates `moremaps.zip` ready for distribution.
+Releases are automated via GitHub Actions — pushing a `vX.Y.Z` tag builds and publishes to both stores. See [CLAUDE.md](CLAUDE.md) for full development and release workflow.
 
 ## License
 
