@@ -2,6 +2,27 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Git Workflow
+
+### Feature branches
+1. Branch off `main`: `git checkout -b feature/my-feature`
+2. Commit changes with conventional commits (`feat:`, `fix:`, `refactor:`, etc.)
+3. Merge to `main` (fast-forward preferred)
+
+### Releases
+1. Branch off `main`: `git checkout -b release/v1.2.3`
+2. Bump version in both `manifest.json` and `package.json`
+3. Commit: `git commit -m "release: v1.2.3"`
+4. Merge to `main` (fast-forward)
+5. Tag and push — this triggers the GitHub Actions release workflow:
+   ```bash
+   git tag v1.2.3 && git push origin main && git push origin v1.2.3
+   ```
+
+The workflow verifies the tag matches the manifest version, builds `moremaps.zip`, publishes to Chrome Web Store and Firefox AMO, and creates a GitHub Release with auto-generated notes.
+
+> **Note**: Chrome Web Store submissions enter a review queue. If a new tag is pushed while a previous version is still in review, the Chrome upload step will fail with `ITEM_NOT_UPDATABLE`. Re-run the workflow from the Actions tab once the review clears.
+
 ## Build Commands
 
 ```bash
