@@ -103,6 +103,23 @@
             this.findMaps();
         }
 
+        isMapAlive(map) {
+            try {
+                return map && map.style != null && typeof map.getStyle === 'function';
+            } catch (e) {
+                return false;
+            }
+        }
+
+        watchForContextLoss(map) {
+            const canvas = map.getCanvas && map.getCanvas();
+            if (!canvas) return;
+            canvas.addEventListener('webglcontextlost', () => {
+                console.warn('More Maps: WebGL context lost, removing dead map instance');
+                this.maps = this.maps.filter(m => m !== map);
+            }, { once: true });
+        }
+
         /**
          * Handle incoming map switch (and modification) requests.
          */
@@ -138,6 +155,7 @@
          * Apply the selected map style to a map instance.
          */
         applyMapStyle(map, mapType) {
+            if (!this.isMapAlive(map)) return;
             try {
                 // Clean up existing custom layers
                 if (map.getLayer('mapycz-layer')) map.removeLayer('mapycz-layer');
@@ -188,10 +206,16 @@
         }
 
         updateAllVisuals() {
+            this.maps = this.maps.filter(m => this.isMapAlive(m));
             this.maps.forEach(map => {
-                if (map.getLayer('mapycz-layer')) {
-                    map.setPaintProperty('mapycz-layer', 'raster-opacity', parseFloat(this.visuals.opacity));
-                    map.setPaintProperty('mapycz-layer', 'raster-saturation', this.visuals.grayscale ? -1 : parseFloat(this.visuals.saturation));
+                try {
+                    if (map.getLayer('mapycz-layer')) {
+                        map.setPaintProperty('mapycz-layer', 'raster-opacity', parseFloat(this.visuals.opacity));
+                        map.setPaintProperty('mapycz-layer', 'raster-saturation', this.visuals.grayscale ? -1 : parseFloat(this.visuals.saturation));
+                    }
+                } catch (e) {
+                    console.warn('More Maps: error updating visuals, removing dead map', e);
+                    this.maps = this.maps.filter(m => m !== map);
                 }
             });
         }
@@ -351,6 +375,7 @@
                         if (map && !this.maps.includes(map)) {
                             console.log('%cMore Maps: Map CAPTURED!', 'color: green', map);
                             this.maps.push(map);
+                            this.watchForContextLoss(map);
                         }
                         if (map) return;
                     }
