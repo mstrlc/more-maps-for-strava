@@ -8,7 +8,7 @@ A browser extension that adds additional map layers and a panorama mode to Strav
   </a>
   &nbsp;
   <a href="https://addons.mozilla.org/en-US/firefox/addon/more-maps-for-strava/">
-    <img src="https://blog.mozilla.org/addons/files/2020/04/get-the-addon-fx-apr-2020.svg" alt="Get the Add-on for Firefox" height="58" />
+    <img src="assets/firefox-badge.svg" alt="Get the Add-on for Firefox" height="58" />
   </a>
 </p>
 
@@ -64,7 +64,7 @@ Fine-tune your map appearance:
 ### Firefox
 
 <a href="https://addons.mozilla.org/en-US/firefox/addon/more-maps-for-strava/">
-  <img src="https://blog.mozilla.org/addons/files/2020/04/get-the-addon-fx-apr-2020.svg" alt="Get the Add-on for Firefox" height="58" />
+  <img src="assets/firefox-badge.svg" alt="Get the Add-on for Firefox" height="58" />
 </a>
 
 ### Manual
