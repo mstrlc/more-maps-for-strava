@@ -4,7 +4,7 @@ A browser extension that adds additional map layers and a panorama mode to Strav
 
 <p align="center">
   <a href="https://chromewebstore.google.com/detail/more-maps-for-strava/adpgjdeigiekdjnjionhhblgfpmkionl">
-    <img src="https://storage.googleapis.com/web-dev-uploads/image/WlD8wC6g8khYWPJUsQceQkhXSlv1/UV4C4sCnBz92Ynx4SKeh.png" alt="Available in the Chrome Web Store" height="58" />
+    <img src="assets/chrome-badge.png" alt="Available in the Chrome Web Store" height="58" />
   </a>
   &nbsp;
   <a href="https://addons.mozilla.org/en-US/firefox/addon/more-maps-for-strava/">
@@ -58,7 +58,7 @@ Fine-tune your map appearance:
 ### Chrome / Edge
 
 <a href="https://chromewebstore.google.com/detail/more-maps-for-strava/adpgjdeigiekdjnjionhhblgfpmkionl">
-  <img src="https://storage.googleapis.com/web-dev-uploads/image/WlD8wC6g8khYWPJUsQceQkhXSlv1/UV4C4sCnBz92Ynx4SKeh.png" alt="Available in the Chrome Web Store" height="58" />
+  <img src="assets/chrome-badge.png" alt="Available in the Chrome Web Store" height="58" />
 </a>
 
 ### Firefox
