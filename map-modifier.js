@@ -84,6 +84,33 @@ window.addEventListener('message', (event) => {
     }
 });
 
+async function createGoogleSessions(apiKey) {
+    const { STORAGE_KEYS } = MoreMapsConfig;
+    const configs = [
+        { key: STORAGE_KEYS.GOOGLE_SESSION_ROADMAP,   body: { mapType: 'roadmap',   language: 'en-US', region: 'US' } },
+        { key: STORAGE_KEYS.GOOGLE_SESSION_SATELLITE, body: { mapType: 'satellite', language: 'en-US', region: 'US' } },
+        { key: STORAGE_KEYS.GOOGLE_SESSION_TERRAIN,   body: { mapType: 'terrain',   language: 'en-US', region: 'US' } },
+        { key: STORAGE_KEYS.GOOGLE_SESSION_HYBRID,    body: { mapType: 'satellite', layerTypes: ['layerRoadmap'], language: 'en-US', region: 'US' } },
+    ];
+    await Promise.all(configs.map(async ({ key, body }) => {
+        try {
+            const res = await fetch(`https://tile.googleapis.com/v1/createSession?key=${encodeURIComponent(apiKey)}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body)
+            });
+            if (res.ok) {
+                const data = await res.json();
+                localStorage.setItem(key, JSON.stringify({ token: data.session, expiry: data.expiry }));
+            } else {
+                console.error('More Maps: Google session error', res.status, await res.text());
+            }
+        } catch (e) {
+            console.error('More Maps: Failed to create Google session', e);
+        }
+    }));
+}
+
 function updatePanoramaUI(active) {
     isPanoramaActive = active;
     if (!panoramaButtonEl) return;
@@ -102,12 +129,17 @@ function triggerMapSwitch(mapId) {
     if (mapId.startsWith('mapycz-')) {
         const apiKey = localStorage.getItem(STORAGE_KEYS.MAPY_KEY);
         if (!apiKey) {
-            showSettingsModal(true);
+            showSettingsModal(true, STORAGE_KEYS.MAPY_KEY);
         }
     } else if (mapId === 'osm-cycle') {
         const apiKey = localStorage.getItem(STORAGE_KEYS.TF_KEY);
         if (!apiKey) {
-            showSettingsModal(true);
+            showSettingsModal(true, STORAGE_KEYS.TF_KEY);
+        }
+    } else if (mapId.startsWith('google-')) {
+        const apiKey = localStorage.getItem(STORAGE_KEYS.GOOGLE_KEY);
+        if (!apiKey) {
+            showSettingsModal(true, STORAGE_KEYS.GOOGLE_KEY);
         }
     }
 
@@ -646,12 +678,12 @@ function injectSettingsModal() {
 
     // Constants already extracted at the top level
 
-    const createApiLink = (url) => {
+    const createApiLink = (url, label = STRINGS.SETTINGS.GET_KEY) => {
         const a = document.createElement('a');
         a.href = url;
         a.target = '_blank';
         a.style.cssText = 'color:#fc4c02; text-decoration:underline; display:inline-flex; align-items:center; margin-left:8px; vertical-align:middle; font-size:11px; font-weight:500;';
-        a.innerHTML = `<span style="margin-right:4px;">${STRINGS.SETTINGS.GET_KEY}</span><svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><line x1="7" y1="17" x2="17" y2="7"></line><polyline points="7 7 17 7 17 17"></polyline></svg>`;
+        a.innerHTML = `<span style="margin-right:4px;">${label}</span><svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><line x1="7" y1="17" x2="17" y2="7"></line><polyline points="7 7 17 7 17 17"></polyline></svg>`;
         return a;
     };
 
@@ -664,10 +696,14 @@ function injectSettingsModal() {
         <span>${STRINGS.SETTINGS.API_KEYS_HEADER}</span>
     `;
 
+    const apiKeysExplainer = document.createElement('p');
+    apiKeysExplainer.style.cssText = 'font-size:12px; color:#666; margin:0 0 16px 0; line-height:1.5;';
+    apiKeysExplainer.innerHTML = STRINGS.SETTINGS.API_KEYS_EXPLAINER;
+
     const labelMapy = document.createElement('label');
     labelMapy.style.cssText = 'display:flex; align-items:center; margin-bottom:8px; font-weight:600; text-align:left; font-size:13px; color:#333; width:100%;';
     labelMapy.innerHTML = `<span>${STRINGS.SETTINGS.MAPY_LABEL}</span>`;
-    labelMapy.appendChild(createApiLink(STRINGS.SETTINGS.API_LINKS.MAPY));
+    labelMapy.appendChild(createApiLink(STRINGS.SETTINGS.API_LINKS.MAPY, STRINGS.SETTINGS.GET_KEY));
 
     const inputMapy = document.createElement('input');
     inputMapy.id = `input-${STORAGE_KEYS.MAPY_KEY}`;
@@ -683,7 +719,7 @@ function injectSettingsModal() {
     const labelGoogle = document.createElement('label');
     labelGoogle.style.cssText = 'display:flex; align-items:center; margin-bottom:8px; font-weight:600; text-align:left; font-size:13px; color:#333; width:100%;';
     labelGoogle.innerHTML = `<span>${STRINGS.SETTINGS.GOOGLE_LABEL}</span>`;
-    labelGoogle.appendChild(createApiLink(STRINGS.SETTINGS.API_LINKS.GOOGLE));
+    labelGoogle.appendChild(createApiLink(STRINGS.SETTINGS.API_LINKS.GOOGLE, STRINGS.SETTINGS.GET_KEY_GOOGLE));
 
     const inputGoogle = document.createElement('input');
     inputGoogle.id = `input-${STORAGE_KEYS.GOOGLE_KEY}`;
@@ -739,10 +775,13 @@ function injectSettingsModal() {
 
     saveBtn.appendChild(saveIcon);
     saveBtn.appendChild(saveText);
-    saveBtn.onclick = () => {
+    saveBtn.onclick = async () => {
         localStorage.setItem(STORAGE_KEYS.MAPY_KEY, inputMapy.value.trim());
-        localStorage.setItem(STORAGE_KEYS.GOOGLE_KEY, inputGoogle.value.trim());
         localStorage.setItem(STORAGE_KEYS.TF_KEY, inputTF.value.trim());
+
+        const googleKey = inputGoogle.value.trim();
+        const prevGoogleKey = localStorage.getItem(STORAGE_KEYS.GOOGLE_KEY) || '';
+        localStorage.setItem(STORAGE_KEYS.GOOGLE_KEY, googleKey);
 
         // Clear any highlights
         [inputMapy, inputGoogle, inputTF].forEach(inp => {
@@ -751,6 +790,10 @@ function injectSettingsModal() {
         });
 
         modal.style.display = 'none';
+
+        if (googleKey && googleKey !== prevGoogleKey) {
+            await createGoogleSessions(googleKey);
+        }
         window.postMessage({ type: 'MOREMAPS_API_KEY_UPDATED' }, '*');
     };
 
@@ -791,6 +834,7 @@ function injectSettingsModal() {
     content.appendChild(closeBtn);
     content.appendChild(headerWrapper);
     content.appendChild(apiKeysHeading);
+    content.appendChild(apiKeysExplainer);
     content.appendChild(labelMapy);
     content.appendChild(inputMapy);
     content.appendChild(labelGoogle);
