@@ -2,6 +2,11 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Skills
+
+- **release** (`.claude/skills/release/SKILL.md`) — full release workflow. Trigger: `/release`
+When the user types `/release`, invoke the Skill tool with `skill: "release"` before doing anything else.
+
 ## Git Workflow
 
 ### Feature branches
