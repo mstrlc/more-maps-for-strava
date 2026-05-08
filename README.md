@@ -91,15 +91,36 @@ Fine-tune your map appearance:
 
 ### API Keys
 
-Some features require free API keys. Click the **More Maps Settings** button in Strava's map layer menu to configure them:
+To keep this extension free, each user provides their own API keys. Providers charge per request, so the key needs to be linked to your account. The free tiers are generous — **no credit card required**, and **personal use won't cost you anything**.
 
-| Provider | Required For | Get Your Key |
-|----------|--------------|--------------|
-| **Mapy.cz** | Mapy.cz map layers & panorama | [developer.mapy.com](https://developer.mapy.com/account/projects) |
-| **Google Maps** | Google map layers & Street View | [Google Cloud Console](https://console.cloud.google.com/google/maps-apis/credentials) |
-| **Thunderforest** | Cycle Map layer | [manage.thunderforest.com](https://manage.thunderforest.com/) |
+Click the **More Maps Settings** button in Strava's map layer menu to enter your keys.
 
-> **Privacy Note**: API keys are stored exclusively in your browser's local storage and never leave your machine.
+> **Privacy note**: API keys are stored exclusively in your browser's local storage and never leave your machine.
+
+#### Mapy.cz (~1 min)
+
+Required for: Mapy.cz map layers and Mapy.cz Panorama.
+
+1. Go to [developer.mapy.com/account/projects](https://developer.mapy.com/account/projects)
+2. Create a free account and a new project
+3. Copy the API key and paste it into the extension settings
+
+#### Google Maps (~3 min)
+
+Required for: Google map layers (Standard, Satellite, Terrain, Hybrid) and Google Street View.
+
+1. Go to [Google Cloud Console](https://console.cloud.google.com/google/maps-apis/credentials)
+2. Create a free account and a new project
+3. Enable the **Map Tiles API** and the **Street View Static API** for your project
+4. Create an API key, copy it, and paste it into the extension settings
+
+#### Thunderforest (~1 min)
+
+Required for: Thunderforest Cycle Map layer.
+
+1. Go to [manage.thunderforest.com](https://manage.thunderforest.com/)
+2. Create a free account
+3. Copy the API key and paste it into the extension settings
 
 ### Panorama Provider
 
