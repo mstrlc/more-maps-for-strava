@@ -32,7 +32,7 @@ git push origin vX.Y.Z
 
 Run `git log vPREV..vNEW --oneline` to see all commits since the previous tag.
 
-Write 3–5 short bullet points covering user-facing changes only. End each bullet with `(@mstrlc)`. Post via:
+Write 3–5 short bullet points covering user-facing changes only. End each bullet with the GitHub username of the person who made the change — look it up from `git log` author email if needed. Post via:
 
 ```bash
 gh release edit vX.Y.Z --notes "..."
