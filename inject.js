@@ -2,6 +2,24 @@
     const { STORAGE_KEYS } = MoreMapsConfig;
     const getApiKey = () => localStorage.getItem(STORAGE_KEYS.MAPY_KEY) || '';
     const getTFKey = () => localStorage.getItem(STORAGE_KEYS.TF_KEY) || '';
+    const getGoogleKey = () => localStorage.getItem(STORAGE_KEYS.GOOGLE_KEY) || '';
+    const getGoogleSession = (mapType) => {
+        const keyMap = {
+            'google-regular':   STORAGE_KEYS.GOOGLE_SESSION_ROADMAP,
+            'google-satellite': STORAGE_KEYS.GOOGLE_SESSION_SATELLITE,
+            'google-terrain':   STORAGE_KEYS.GOOGLE_SESSION_TERRAIN,
+            'google-hybrid':    STORAGE_KEYS.GOOGLE_SESSION_HYBRID,
+        };
+        const storageKey = keyMap[mapType];
+        if (!storageKey) return null;
+        try {
+            const raw = localStorage.getItem(storageKey);
+            if (!raw) return null;
+            const { token, expiry } = JSON.parse(raw);
+            if (Date.now() / 1000 > expiry) return null;
+            return token;
+        } catch { return null; }
+    };
 
     // Config: Use @2x tiles if pixel ratio > 1 for supported layers
     const isRetina = window.devicePixelRatio > 1;
@@ -14,22 +32,22 @@
         'mapycz-regular': {
             // Basic supports @2x
             url: `https://api.mapy.com/v1/maptiles/basic/${retinaTiles}/{z}/{x}/{y}?apikey=\${API_KEY}`,
-            attribution: ''
+            attribution: '&copy; <a href="https://mapy.cz/" target="_blank">Mapy.cz</a>, &copy; OpenStreetMap contributors'
         },
         'mapycz-outdoor': {
             // Outdoor supports @2x
             url: `https://api.mapy.com/v1/maptiles/outdoor/${retinaTiles}/{z}/{x}/{y}?apikey=\${API_KEY}`,
-            attribution: ''
+            attribution: '&copy; <a href="https://mapy.cz/" target="_blank">Mapy.cz</a>, &copy; OpenStreetMap contributors'
         },
         'mapycz-winter': {
             // Winter does NOT support @2x
             url: `https://api.mapy.com/v1/maptiles/winter/256/{z}/{x}/{y}?apikey=\${API_KEY}`,
-            attribution: ''
+            attribution: '&copy; <a href="https://mapy.cz/" target="_blank">Mapy.cz</a>, &copy; OpenStreetMap contributors'
         },
         'mapycz-satellite': {
             // Aerial does NOT support @2x
             url: `https://api.mapy.com/v1/maptiles/aerial/256/{z}/{x}/{y}?apikey=\${API_KEY}`,
-            attribution: ''
+            attribution: '&copy; <a href="https://mapy.cz/" target="_blank">Mapy.cz</a>'
         },
         'osm-regular': {
             url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
@@ -52,19 +70,19 @@
             attribution: '&copy; Thunderforest, OpenStreetMap'
         },
         'google-regular': {
-            url: 'https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}',
+            url: 'https://tile.googleapis.com/v1/2dtiles/{z}/{x}/{y}?session=${SESSION}&key=${GOOGLE_KEY}',
             attribution: '&copy; Google'
         },
         'google-satellite': {
-            url: 'https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}',
+            url: 'https://tile.googleapis.com/v1/2dtiles/{z}/{x}/{y}?session=${SESSION}&key=${GOOGLE_KEY}',
             attribution: '&copy; Google'
         },
         'google-terrain': {
-            url: 'https://mt1.google.com/vt/lyrs=p&x={x}&y={y}&z={z}',
+            url: 'https://tile.googleapis.com/v1/2dtiles/{z}/{x}/{y}?session=${SESSION}&key=${GOOGLE_KEY}',
             attribution: '&copy; Google'
         },
         'google-hybrid': {
-            url: 'https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}',
+            url: 'https://tile.googleapis.com/v1/2dtiles/{z}/{x}/{y}?session=${SESSION}&key=${GOOGLE_KEY}',
             attribution: '&copy; Google'
         }
     };
@@ -151,6 +169,23 @@
             }
         }
 
+        setAttribution(map, html) {
+            const container = map.getContainer && map.getContainer();
+            if (!container) return;
+            let el = container.querySelector('.moremaps-attribution');
+            if (!html) {
+                if (el) el.remove();
+                return;
+            }
+            if (!el) {
+                el = document.createElement('div');
+                el.className = 'moremaps-attribution';
+                el.style.cssText = 'position:absolute;bottom:0;right:0;z-index:10;background:rgba(255,255,255,0.75);padding:2px 5px;font-size:11px;line-height:1.4;pointer-events:auto;';
+                container.appendChild(el);
+            }
+            el.innerHTML = html;
+        }
+
         /**
          * Apply the selected map style to a map instance.
          */
@@ -164,6 +199,7 @@
                 // Handle Reset
                 if (mapType === 'strava-default') {
                     this.setStravaVisibility(map, true);
+                    this.setAttribution(map, null);
                     return;
                 }
 
@@ -177,9 +213,25 @@
                 this.setStravaVisibility(map, false);
 
                 // Add Custom Source
-                const apiKey = mapType.startsWith('osm-cycle') ? getTFKey() : getApiKey();
+                let apiKey, session;
+                if (mapType.startsWith('osm-cycle')) {
+                    apiKey = getTFKey();
+                } else if (mapType.startsWith('google-')) {
+                    apiKey = getGoogleKey();
+                    session = getGoogleSession(mapType);
+                    if (!session) {
+                        console.warn('More Maps: No Google session token available. Save your API key in settings.');
+                        return;
+                    }
+                } else {
+                    apiKey = getApiKey();
+                }
                 const rawTiles = Array.isArray(config.url) ? config.url : [config.url];
-                const finalTiles = rawTiles.map(t => t.replace('${API_KEY}', apiKey));
+                const finalTiles = rawTiles.map(t =>
+                    t.replace('${API_KEY}', apiKey)
+                     .replace('${SESSION}', session || '')
+                     .replace('${GOOGLE_KEY}', apiKey)
+                );
 
                 map.addSource('mapycz-source', {
                     'type': 'raster',
@@ -199,6 +251,8 @@
                         'raster-saturation': this.visuals.grayscale ? -1 : parseFloat(this.visuals.saturation)
                     }
                 }, beforeId);
+
+                this.setAttribution(map, config.attribution);
 
             } catch (e) {
                 console.error('More Maps: Error applying layer', e);
