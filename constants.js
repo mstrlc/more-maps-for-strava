@@ -39,6 +39,10 @@ var MoreMapsConfig = {
         SATURATION_MAPBOX: 'moremaps_saturation_mapbox',
         SATURATION_SLIDER: 'moremaps_saturation_slider',
         ACTIVE_ID: 'moremaps_active_id',
-        PANO_PROVIDER: 'moremaps_pano_provider'
+        PANO_PROVIDER: 'moremaps_pano_provider',
+        GOOGLE_SESSION_ROADMAP: 'moremaps_google_session_roadmap',
+        GOOGLE_SESSION_SATELLITE: 'moremaps_google_session_satellite',
+        GOOGLE_SESSION_TERRAIN: 'moremaps_google_session_terrain',
+        GOOGLE_SESSION_HYBRID: 'moremaps_google_session_hybrid'
     }
 };
