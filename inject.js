@@ -2,24 +2,6 @@
     const { STORAGE_KEYS } = MoreMapsConfig;
     const getApiKey = () => localStorage.getItem(STORAGE_KEYS.MAPY_KEY) || '';
     const getTFKey = () => localStorage.getItem(STORAGE_KEYS.TF_KEY) || '';
-    const getGoogleKey = () => localStorage.getItem(STORAGE_KEYS.GOOGLE_KEY) || '';
-    const getGoogleSession = (mapType) => {
-        const keyMap = {
-            'google-regular':   STORAGE_KEYS.GOOGLE_SESSION_ROADMAP,
-            'google-satellite': STORAGE_KEYS.GOOGLE_SESSION_SATELLITE,
-            'google-terrain':   STORAGE_KEYS.GOOGLE_SESSION_TERRAIN,
-            'google-hybrid':    STORAGE_KEYS.GOOGLE_SESSION_HYBRID,
-        };
-        const storageKey = keyMap[mapType];
-        if (!storageKey) return null;
-        try {
-            const raw = localStorage.getItem(storageKey);
-            if (!raw) return null;
-            const { token, expiry } = JSON.parse(raw);
-            if (Date.now() / 1000 > expiry) return null;
-            return token;
-        } catch { return null; }
-    };
 
     // Config: Use @2x tiles if pixel ratio > 1 for supported layers
     const isRetina = window.devicePixelRatio > 1;
@@ -70,19 +52,39 @@
             attribution: '&copy; Thunderforest, OpenStreetMap'
         },
         'google-regular': {
-            url: 'https://tile.googleapis.com/v1/2dtiles/{z}/{x}/{y}?session=${SESSION}&key=${GOOGLE_KEY}',
+            url: [
+                'https://mt0.google.com/vt/lyrs=m&x={x}&y={y}&z={z}',
+                'https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}',
+                'https://mt2.google.com/vt/lyrs=m&x={x}&y={y}&z={z}',
+                'https://mt3.google.com/vt/lyrs=m&x={x}&y={y}&z={z}'
+            ],
             attribution: '&copy; Google'
         },
         'google-satellite': {
-            url: 'https://tile.googleapis.com/v1/2dtiles/{z}/{x}/{y}?session=${SESSION}&key=${GOOGLE_KEY}',
+            url: [
+                'https://mt0.google.com/vt/lyrs=s&x={x}&y={y}&z={z}',
+                'https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}',
+                'https://mt2.google.com/vt/lyrs=s&x={x}&y={y}&z={z}',
+                'https://mt3.google.com/vt/lyrs=s&x={x}&y={y}&z={z}'
+            ],
             attribution: '&copy; Google'
         },
         'google-terrain': {
-            url: 'https://tile.googleapis.com/v1/2dtiles/{z}/{x}/{y}?session=${SESSION}&key=${GOOGLE_KEY}',
+            url: [
+                'https://mt0.google.com/vt/lyrs=p&x={x}&y={y}&z={z}',
+                'https://mt1.google.com/vt/lyrs=p&x={x}&y={y}&z={z}',
+                'https://mt2.google.com/vt/lyrs=p&x={x}&y={y}&z={z}',
+                'https://mt3.google.com/vt/lyrs=p&x={x}&y={y}&z={z}'
+            ],
             attribution: '&copy; Google'
         },
         'google-hybrid': {
-            url: 'https://tile.googleapis.com/v1/2dtiles/{z}/{x}/{y}?session=${SESSION}&key=${GOOGLE_KEY}',
+            url: [
+                'https://mt0.google.com/vt/lyrs=y&x={x}&y={y}&z={z}',
+                'https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}',
+                'https://mt2.google.com/vt/lyrs=y&x={x}&y={y}&z={z}',
+                'https://mt3.google.com/vt/lyrs=y&x={x}&y={y}&z={z}'
+            ],
             attribution: '&copy; Google'
         }
     };
@@ -213,25 +215,14 @@
                 this.setStravaVisibility(map, false);
 
                 // Add Custom Source
-                let apiKey, session;
+                let apiKey;
                 if (mapType.startsWith('osm-cycle')) {
                     apiKey = getTFKey();
-                } else if (mapType.startsWith('google-')) {
-                    apiKey = getGoogleKey();
-                    session = getGoogleSession(mapType);
-                    if (!session) {
-                        console.warn('More Maps: No Google session token available. Save your API key in settings.');
-                        return;
-                    }
-                } else {
+                } else if (!mapType.startsWith('google-')) {
                     apiKey = getApiKey();
                 }
                 const rawTiles = Array.isArray(config.url) ? config.url : [config.url];
-                const finalTiles = rawTiles.map(t =>
-                    t.replace('${API_KEY}', apiKey)
-                     .replace('${SESSION}', session || '')
-                     .replace('${GOOGLE_KEY}', apiKey)
-                );
+                const finalTiles = rawTiles.map(t => t.replace('${API_KEY}', apiKey || ''));
 
                 map.addSource('mapycz-source', {
                     'type': 'raster',

@@ -3,11 +3,11 @@
  */
 var MoreMapsConfig = {
     SELECTORS: {
-        CONTAINER: '.MapDisplayControl_options__6iIQA',
-        BUTTON: 'MapDisplayControl_optionButton___nsae',
-        IMAGE: 'MapDisplayControl_option__KwK84',
-        TEXT: ['element_body1__VB3SZ', 'element_fontSize2xs__tRJQR'],
-        SELECTED_CLASS: 'MapDisplayControl_selected__tEGV8',
+        CONTAINER: '[class*="MapDisplayControl_options"]',
+        BUTTON: 'MapDisplayControl_optionButton',
+        IMAGE: 'MapDisplayControl_option',
+        TEXT: ['element_body1', 'element_fontSize2xs'],
+        SELECTED_CLASS: 'MapDisplayControl_selected',
         NAV_MENU: '.react-horizontal-scrolling-menu--scroll-container'
     },
 

@@ -25,7 +25,7 @@
 
         const style = document.createElement('style');
         style.textContent = `
-            .${SELECTORS.SELECTED_CLASS} span {
+            [class*="${SELECTORS.SELECTED_CLASS}"] span {
                 font-weight: 700 !important;
             }
             ${SELECTORS.CONTAINER} {
@@ -67,6 +67,26 @@ let panoramaButtonEl = null;
 let panoramaEyeIcon = null;
 let panoramaXIcon = null;
 
+let detectedButtonClass = null;
+let detectedImageClass = null;
+let detectedTextClasses = null;
+let detectedSelectedClass = null;
+
+function detectClassesFromContainer(container) {
+    const btn = container.querySelector('button:not([data-map-id])');
+    if (btn) {
+        detectedButtonClass = btn.className || detectedButtonClass;
+        const img = btn.querySelector('img');
+        if (img) detectedImageClass = img.className || detectedImageClass;
+        const span = btn.querySelector('span');
+        if (span) detectedTextClasses = span.className.split(' ').filter(Boolean);
+    }
+    for (const b of Array.from(container.querySelectorAll('button:not([data-map-id])'))) {
+        const sel = Array.from(b.classList).find(c => c.toLowerCase().includes('selected'));
+        if (sel) { detectedSelectedClass = sel; break; }
+    }
+}
+
 // Listen for messages from the page context
 window.addEventListener('message', (event) => {
     if (event.source !== window || !event.data) return;
@@ -84,32 +104,6 @@ window.addEventListener('message', (event) => {
     }
 });
 
-async function createGoogleSessions(apiKey) {
-    const { STORAGE_KEYS } = MoreMapsConfig;
-    const configs = [
-        { key: STORAGE_KEYS.GOOGLE_SESSION_ROADMAP,   body: { mapType: 'roadmap',   language: 'en-US', region: 'US' } },
-        { key: STORAGE_KEYS.GOOGLE_SESSION_SATELLITE, body: { mapType: 'satellite', language: 'en-US', region: 'US' } },
-        { key: STORAGE_KEYS.GOOGLE_SESSION_TERRAIN,   body: { mapType: 'terrain',   language: 'en-US', region: 'US' } },
-        { key: STORAGE_KEYS.GOOGLE_SESSION_HYBRID,    body: { mapType: 'satellite', layerTypes: ['layerRoadmap'], language: 'en-US', region: 'US' } },
-    ];
-    await Promise.all(configs.map(async ({ key, body }) => {
-        try {
-            const res = await fetch(`https://tile.googleapis.com/v1/createSession?key=${encodeURIComponent(apiKey)}`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(body)
-            });
-            if (res.ok) {
-                const data = await res.json();
-                localStorage.setItem(key, JSON.stringify({ token: data.session, expiry: data.expiry }));
-            } else {
-                console.error('More Maps: Google session error', res.status, await res.text());
-            }
-        } catch (e) {
-            console.error('More Maps: Failed to create Google session', e);
-        }
-    }));
-}
 
 function updatePanoramaUI(active) {
     isPanoramaActive = active;
@@ -135,11 +129,6 @@ function triggerMapSwitch(mapId) {
         const apiKey = localStorage.getItem(STORAGE_KEYS.TF_KEY);
         if (!apiKey) {
             showSettingsModal(true, STORAGE_KEYS.TF_KEY);
-        }
-    } else if (mapId.startsWith('google-')) {
-        const apiKey = localStorage.getItem(STORAGE_KEYS.GOOGLE_KEY);
-        if (!apiKey) {
-            showSettingsModal(true, STORAGE_KEYS.GOOGLE_KEY);
         }
     }
 
@@ -172,36 +161,36 @@ function updateStylingControls(enabled) {
 }
 
 function updateButtonSelection(selectedBtn) {
-    const parent = selectedBtn.closest(`.${SELECTORS.CONTAINER.substring(1)}`) || selectedBtn.parentElement;
+    const parent = selectedBtn.closest(SELECTORS.CONTAINER) || selectedBtn.parentElement;
     if (!parent) return;
 
-    // Deselect all buttons
-    const all = parent.querySelectorAll(`.${SELECTORS.BUTTON}`);
-    all.forEach(btn => btn.classList.remove(SELECTORS.SELECTED_CLASS));
+    const selClass = detectedSelectedClass || SELECTORS.SELECTED_CLASS;
+    const all = parent.querySelectorAll('button');
+    all.forEach(btn => btn.classList.remove(selClass));
 
-    // Select target
-    selectedBtn.classList.add(SELECTORS.SELECTED_CLASS);
+    selectedBtn.classList.add(selClass);
 }
 
 function createButton(config) {
     const btn = document.createElement('button');
-    btn.className = SELECTORS.BUTTON;
+    btn.className = detectedButtonClass || SELECTORS.BUTTON;
     btn.dataset.mapId = config.id;
 
+    const selClass = detectedSelectedClass || SELECTORS.SELECTED_CLASS;
     if (activeMapId === config.id) {
-        btn.classList.add(SELECTORS.SELECTED_CLASS);
+        btn.classList.add(selClass);
     }
 
     const img = document.createElement('img');
     img.alt = config.id;
     img.src = browser.runtime.getURL(config.img);
-    img.className = SELECTORS.IMAGE;
+    img.className = detectedImageClass || SELECTORS.IMAGE;
     Object.assign(img.style, {
         objectFit: 'cover'
     });
 
     const span = document.createElement('span');
-    span.classList.add(...SELECTORS.TEXT);
+    span.classList.add(...(detectedTextClasses || SELECTORS.TEXT));
     span.textContent = config.label;
 
     btn.appendChild(img);
@@ -219,13 +208,12 @@ function createButton(config) {
  * Attaches listeners to Strava's original buttons to handle resets.
  */
 function attachResetListeners(container) {
-    // Find buttons that are NOT ours
-    const stravaButtons = container.querySelectorAll(`.${SELECTORS.BUTTON}:not([data-map-id])`);
+    const selClass = detectedSelectedClass || SELECTORS.SELECTED_CLASS;
+    const stravaButtons = container.querySelectorAll('button:not([data-map-id])');
 
     stravaButtons.forEach(btn => {
-        // If we have an active custom map, force Strava's button to be DESELECTED
         if (activeMapId && activeMapId !== 'strava-default' && !MAP_OPTIONS.find(o => o.id === btn.dataset.mapId)) {
-            btn.classList.remove(SELECTORS.SELECTED_CLASS);
+            btn.classList.remove(selClass);
         }
 
         if (btn.dataset.resetListenerAttached) return;
@@ -233,10 +221,8 @@ function attachResetListeners(container) {
 
         btn.addEventListener('click', () => {
             triggerMapSwitch('strava-default');
-            // We only need to deselect OUR buttons visually.
-            // Strava will handle selecting its own button.
             const myButtons = container.querySelectorAll('[data-map-id]');
-            myButtons.forEach(b => b.classList.remove(SELECTORS.SELECTED_CLASS));
+            myButtons.forEach(b => b.classList.remove(selClass));
         });
     });
 }
@@ -252,6 +238,8 @@ const observer = new MutationObserver((mutations) => {
             const container = node.matches(SELECTORS.CONTAINER) ? node : node.querySelector(SELECTORS.CONTAINER);
 
             if (container) {
+                detectClassesFromContainer(container);
+
                 // Attach reset listeners to existing buttons
                 attachResetListeners(container);
 
@@ -780,7 +768,6 @@ function injectSettingsModal() {
         localStorage.setItem(STORAGE_KEYS.TF_KEY, inputTF.value.trim());
 
         const googleKey = inputGoogle.value.trim();
-        const prevGoogleKey = localStorage.getItem(STORAGE_KEYS.GOOGLE_KEY) || '';
         localStorage.setItem(STORAGE_KEYS.GOOGLE_KEY, googleKey);
 
         // Clear any highlights
@@ -791,9 +778,6 @@ function injectSettingsModal() {
 
         modal.style.display = 'none';
 
-        if (googleKey && googleKey !== prevGoogleKey) {
-            await createGoogleSessions(googleKey);
-        }
         window.postMessage({ type: 'MOREMAPS_API_KEY_UPDATED' }, '*');
     };
 
