@@ -1,858 +1,323 @@
 /**
  * More Maps for Strava - Map Modifier Script
- * 
- * Injects the content script and manages the UI integration with Strava's map controller.
+ *
+ * Injects the page-context scripts and integrates with Strava's new CoreMap
+ * (FATMAP) engine UI. Our map options are injected natively into Strava's own
+ * "Change map style" popover (MapPreferences_*); the panorama toggle goes into
+ * the map's top-left UI controls. Communicates with the page via postMessage.
  */
 
-// Inject scripts using the same pattern as strava-map-switcher
-// This ensures they run in the page context, not the content script context
+// Inject page-context scripts (run in the page's JS world, not the isolated one).
 {
-    const injectPageScript = (filename) => {
-        return new Promise((resolve) => {
-            const s = document.createElement('script');
-            s.src = browser.runtime.getURL(filename);
-            s.type = 'text/javascript';
-            s.onload = resolve;
-            (document.body || document.documentElement).appendChild(s);
-        });
-    };
+    const injectPageScript = (filename) => new Promise((resolve) => {
+        const s = document.createElement('script');
+        s.src = browser.runtime.getURL(filename);
+        s.type = 'text/javascript';
+        s.onload = resolve;
+        (document.body || document.documentElement).appendChild(s);
+    });
 
-    const injectStyles = async () => {
-        if (!document.body) {
-            setTimeout(injectStyles, 10);
-            return;
-        }
-
-        const style = document.createElement('style');
-        style.textContent = `
-            [class*="${SELECTORS.SELECTED_CLASS}"] span {
-                font-weight: 700 !important;
-            }
-            ${SELECTORS.CONTAINER} {
-                grid-template-columns: repeat(4, 1fr) !important;
-            }
-        `;
-        document.head.appendChild(style);
-
-        // Inject sequentially
-        await injectPageScript('constants.js');
-
-        // Inject Extension URL for panorama iframe via Meta tag (avoids CSP inline script issues)
+    const boot = async () => {
+        if (!document.head) { setTimeout(boot, 10); return; }
         const meta = document.createElement('meta');
         meta.name = 'moremaps-extension-url';
         meta.content = browser.runtime.getURL('');
         document.head.appendChild(meta);
 
+        await injectPageScript('constants.js');
         await injectPageScript('strings.js');
         await injectPageScript('panorama.js');
         await injectPageScript('inject.js');
     };
-
-    injectStyles();
+    boot();
 }
 
-const {
-    SELECTORS,
-    MAP_OPTIONS,
-    OSM_OPTIONS,
-    GOOGLE_OPTIONS,
-    STORAGE_KEYS,
-    STRINGS
-} = MoreMapsConfig;
+const { MAP_OPTIONS, OSM_OPTIONS, GOOGLE_OPTIONS, STORAGE_KEYS, STRINGS } = MoreMapsConfig;
 
-let activeMapId = null;
-let panoramaButtonInjected = false;
+const ORANGE = '#fc4c02';
+// Always start at strava-default: on page load the engine shows Strava's own
+// map (we don't re-apply across reloads), so pre-selecting a persisted custom
+// provider would wrongly outline two buttons.
+let activeMapId = 'strava-default';
 let isPanoramaActive = false;
 let panoramaButtonEl = null;
-let panoramaEyeIcon = null;
-let panoramaXIcon = null;
 
-let detectedButtonClass = null;
-let detectedImageClass = null;
-let detectedTextClasses = null;
-let detectedSelectedClass = null;
+// Detected native class names (cloned from Strava's own buttons for a native look).
+const native = {
+    optionButton: 'MapPreferences_optionButton',
+    imageContainer: 'MapPreferences_imageContainer',
+    image: 'MapPreferences_option',
+    label: '',
+    selected: 'MapPreferences_selected',
+    section: 'MapPreferences_section',
+    header: 'MapPreferences_header',
+    heading: '',
+    optionsGrid: 'MapPreferences_options'
+};
 
-function detectClassesFromContainer(container) {
-    const btn = container.querySelector('button:not([data-map-id])');
-    if (btn) {
-        detectedButtonClass = btn.className || detectedButtonClass;
-        const img = btn.querySelector('img');
-        if (img) detectedImageClass = img.className || detectedImageClass;
-        const span = btn.querySelector('span');
-        if (span) detectedTextClasses = span.className.split(' ').filter(Boolean);
-    }
-    for (const b of Array.from(container.querySelectorAll('button:not([data-map-id])'))) {
-        const sel = Array.from(b.classList).find(c => c.toLowerCase().includes('selected'));
-        if (sel) { detectedSelectedClass = sel; break; }
-    }
-}
-
-// Listen for messages from the page context
+// ---------------------------------------------------------------------------
+// Messages from the page context
+// ---------------------------------------------------------------------------
 window.addEventListener('message', (event) => {
     if (event.source !== window || !event.data) return;
-
     if (event.data.type === 'MOREMAPS_PANORAMA_TOGGLE') {
         updatePanoramaUI(event.data.active);
     } else if (event.data.type === 'MOREMAPS_OPEN_SETTINGS') {
         showSettingsModal(event.data.instructions || false, event.data.highlightKey || null);
     } else if (event.data.type === 'MOREMAPS_API_KEY_UPDATED') {
-        // Sync the provider selector if it exists
-        const selector = document.getElementById('moremaps-panorama-provider-selector');
-        if (selector) {
-            selector.value = localStorage.getItem(STORAGE_KEYS.PANO_PROVIDER) || 'mapy';
-        }
+        const sel = document.getElementById('moremaps-pano-provider');
+        if (sel) sel.value = localStorage.getItem(STORAGE_KEYS.PANO_PROVIDER) || 'mapy';
     }
 });
-
 
 function updatePanoramaUI(active) {
     isPanoramaActive = active;
     if (!panoramaButtonEl) return;
-
-    if (isPanoramaActive) {
-        panoramaButtonEl.style.color = '#fc4c02';
-        panoramaButtonEl.style.backgroundColor = '#e6e6e6';
-    } else {
-        panoramaButtonEl.style.color = '';
-        panoramaButtonEl.style.backgroundColor = '';
-    }
+    panoramaButtonEl.style.color = active ? ORANGE : '';
+    panoramaButtonEl.style.backgroundColor = active ? '#e6e6e6' : '';
 }
 
+// ---------------------------------------------------------------------------
+// Map switching
+// ---------------------------------------------------------------------------
 function triggerMapSwitch(mapId) {
-    // Check for API keys if switching to a custom map
-    if (mapId.startsWith('mapycz-')) {
-        const apiKey = localStorage.getItem(STORAGE_KEYS.MAPY_KEY);
-        if (!apiKey) {
-            showSettingsModal(true, STORAGE_KEYS.MAPY_KEY);
-        }
-    } else if (mapId === 'osm-cycle') {
-        const apiKey = localStorage.getItem(STORAGE_KEYS.TF_KEY);
-        if (!apiKey) {
-            showSettingsModal(true, STORAGE_KEYS.TF_KEY);
-        }
+    if (mapId.startsWith('mapycz-') && !localStorage.getItem(STORAGE_KEYS.MAPY_KEY)) {
+        showSettingsModal(true, STORAGE_KEYS.MAPY_KEY);
+    } else if (mapId === 'osm-cycle' && !localStorage.getItem(STORAGE_KEYS.TF_KEY)) {
+        showSettingsModal(true, STORAGE_KEYS.TF_KEY);
     }
-
     activeMapId = mapId;
-    window.postMessage({
-        type: 'MOREMAPS_MAP_SWITCH',
-        mapType: mapId
-    }, '*');
-
-    // Update styling controls availability
-    const isCustom = [...MAP_OPTIONS, ...OSM_OPTIONS].some(opt => opt.id === mapId);
-    updateStylingControls(isCustom);
+    localStorage.setItem(STORAGE_KEYS.ACTIVE_ID, mapId);
+    window.postMessage({ type: 'MOREMAPS_MAP_SWITCH', mapType: mapId }, '*');
 }
 
-function updateStylingControls(enabled) {
-    const stylingSection = document.getElementById('moremaps-styling-section');
-    const stylingHeader = document.getElementById('moremaps-styling-header');
+// Reset to Strava's own base map. Strava's native style button performs the
+// actual map-type switch itself (reliably, including in Firefox). We must NOT
+// call setMapType ourselves — that crashes the WASM in Firefox — nor clearCache/
+// requestRender, which would fight Strava's switch. We only do passive cleanup.
+function clearToStrava() {
+    activeMapId = 'strava-default';
+    localStorage.setItem(STORAGE_KEYS.ACTIVE_ID, 'strava-default');
+    window.postMessage({ type: 'MOREMAPS_MAP_CLEAR' }, '*');
+}
 
-    if (stylingSection && stylingHeader) {
-        if (enabled) {
-            stylingSection.style.opacity = '1';
-            stylingSection.style.pointerEvents = 'auto';
-            stylingHeader.style.opacity = '1';
-        } else {
-            stylingSection.style.opacity = '0.5';
-            stylingSection.style.pointerEvents = 'none';
-            stylingHeader.style.opacity = '0.5';
+// ---------------------------------------------------------------------------
+// Native popover injection (Strava's "Change map style" menu)
+// ---------------------------------------------------------------------------
+function detectNativeClasses(menu) {
+    const btn = menu.querySelector(`[class*="${native.optionButton}"]`);
+    if (btn) {
+        native.optionButton = firstClassContaining(btn, 'optionButton') || native.optionButton;
+        const sel = Array.from(btn.classList).find(c => /selected/i.test(c));
+        if (sel) native.selected = sel;
+        const imgWrap = btn.querySelector(`[class*="imageContainer"]`);
+        if (imgWrap) native.imageContainer = firstClassContaining(imgWrap, 'imageContainer') || native.imageContainer;
+        const img = btn.querySelector('img');
+        if (img && img.className) native.image = img.className;
+        const label = btn.querySelector(`[class*="_label"]`);
+        if (label && label.className) native.label = label.className;
+    }
+    const grid = menu.querySelector(`[class*="${native.optionsGrid}"]`);
+    if (grid) native.optionsGrid = classListString(grid);
+    const section = menu.querySelector(`[class*="${native.section}"]`);
+    if (section) {
+        native.section = classListString(section);
+        const header = section.querySelector(`[class*="${native.header}"]`);
+        if (header) {
+            native.header = classListString(header);
+            const span = header.querySelector('span, div');
+            if (span && span.className) native.heading = span.className;
         }
     }
 }
 
-function updateButtonSelection(selectedBtn) {
-    const parent = selectedBtn.closest(SELECTORS.CONTAINER) || selectedBtn.parentElement;
-    if (!parent) return;
-
-    const selClass = detectedSelectedClass || SELECTORS.SELECTED_CLASS;
-    const all = parent.querySelectorAll('button');
-    all.forEach(btn => btn.classList.remove(selClass));
-
-    selectedBtn.classList.add(selClass);
+function firstClassContaining(el, substr) {
+    return Array.from(el.classList).find(c => c.includes(substr)) || null;
+}
+function classListString(el) {
+    return typeof el.className === 'string' ? el.className : '';
 }
 
-function createButton(config) {
+function createOptionButton(opt) {
     const btn = document.createElement('button');
-    btn.className = detectedButtonClass || SELECTORS.BUTTON;
-    btn.dataset.mapId = config.id;
+    btn.className = native.optionButton;
+    btn.dataset.mmMapId = opt.id;
+    if (activeMapId === opt.id) btn.classList.add(native.selected);
 
-    const selClass = detectedSelectedClass || SELECTORS.SELECTED_CLASS;
-    if (activeMapId === config.id) {
-        btn.classList.add(selClass);
-    }
-
+    const imgWrap = document.createElement('div');
+    imgWrap.className = native.imageContainer;
     const img = document.createElement('img');
-    img.alt = config.id;
-    img.src = browser.runtime.getURL(config.img);
-    img.className = detectedImageClass || SELECTORS.IMAGE;
-    Object.assign(img.style, {
-        objectFit: 'cover'
-    });
+    img.className = native.image;
+    img.alt = opt.label;
+    img.src = browser.runtime.getURL(opt.img);
+    img.style.objectFit = 'cover';
+    imgWrap.appendChild(img);
 
-    const span = document.createElement('span');
-    span.classList.add(...(detectedTextClasses || SELECTORS.TEXT));
-    span.textContent = config.label;
+    const label = document.createElement('div');
+    if (native.label) label.className = native.label;
+    label.textContent = opt.label;
 
-    btn.appendChild(img);
-    btn.appendChild(span);
+    btn.appendChild(imgWrap);
+    btn.appendChild(label);
 
     btn.addEventListener('click', () => {
-        triggerMapSwitch(config.id);
-        updateButtonSelection(btn);
+        // Exclusive selection across the whole menu (native + ours).
+        const menu = btn.closest(`[class*="MapPreferences_menuContainer"]`) || document;
+        menu.querySelectorAll(`[class*="${native.optionButton}"]`).forEach(b => b.classList.remove(native.selected));
+        btn.classList.add(native.selected);
+        triggerMapSwitch(opt.id);
     });
-
     return btn;
 }
 
-/**
- * Attaches listeners to Strava's original buttons to handle resets.
- */
-function attachResetListeners(container) {
-    const selClass = detectedSelectedClass || SELECTORS.SELECTED_CLASS;
-    const stravaButtons = container.querySelectorAll('button:not([data-map-id])');
+function createSection(title, options) {
+    const section = document.createElement('div');
+    section.className = native.section;
+    section.dataset.mmSection = title;
 
-    stravaButtons.forEach(btn => {
-        if (activeMapId && activeMapId !== 'strava-default' && !MAP_OPTIONS.find(o => o.id === btn.dataset.mapId)) {
-            btn.classList.remove(selClass);
-        }
+    const header = document.createElement('div');
+    header.className = native.header;
+    const heading = document.createElement('span');
+    if (native.heading) heading.className = native.heading;
+    heading.textContent = title;
+    header.appendChild(heading);
 
-        if (btn.dataset.resetListenerAttached) return;
-        btn.dataset.resetListenerAttached = 'true';
+    const grid = document.createElement('div');
+    grid.className = native.optionsGrid;
+    options.forEach(opt => grid.appendChild(createOptionButton(opt)));
 
+    section.appendChild(header);
+    section.appendChild(grid);
+    return section;
+}
+
+function injectIntoMenu(menu) {
+    if (menu.querySelector('[data-mm-section]')) return; // already injected
+    detectNativeClasses(menu);
+
+    // Attach reset behaviour to Strava's own "Map Styles" buttons only (not the
+    // "Layers" overlays, which shouldn't clear our base map).
+    let mapStylesSection = null;
+    menu.querySelectorAll(`[class*="MapPreferences_section"]`).forEach(s => {
+        if (/Map Styles/i.test(s.textContent || '')) mapStylesSection = s;
+    });
+    const nativeStyleBtns = (mapStylesSection || menu).querySelectorAll(`[class*="${native.optionButton}"]`);
+    nativeStyleBtns.forEach(btn => {
+        if (btn.dataset.mmMapId || btn.dataset.mmReset) return;
+        btn.dataset.mmReset = '1';
         btn.addEventListener('click', () => {
-            triggerMapSwitch('strava-default');
-            const myButtons = container.querySelectorAll('[data-map-id]');
-            myButtons.forEach(b => b.classList.remove(selClass));
+            // Make the clicked native style the sole selected button (React won't
+            // re-mark it when re-clicking the already-active style).
+            menu.querySelectorAll(`[class*="${native.optionButton}"]`).forEach(b => b.classList.remove(native.selected));
+            btn.classList.add(native.selected);
+            clearToStrava();
         });
     });
-}
 
-const observer = new MutationObserver((mutations) => {
-    for (const mutation of mutations) {
-        if (mutation.type !== 'childList') continue;
+    // Insert our sections after the first (Map Styles) section.
+    const firstSection = menu.querySelector(`[class*="MapPreferences_section"]`);
+    const anchor = firstSection ? firstSection.nextSibling : null;
+    const frag = document.createDocumentFragment();
+    frag.appendChild(createSection('Mapy.cz', MAP_OPTIONS));
+    frag.appendChild(createSection('OpenStreetMap', OSM_OPTIONS));
+    frag.appendChild(createSection('Google Maps', GOOGLE_OPTIONS));
+    menu.insertBefore(frag, anchor);
 
-        mutation.addedNodes.forEach(node => {
-            if (node.nodeType !== Node.ELEMENT_NODE) return;
-
-            // Check if the added node IS the container or CONTAINS it
-            const container = node.matches(SELECTORS.CONTAINER) ? node : node.querySelector(SELECTORS.CONTAINER);
-
-            if (container) {
-                detectClassesFromContainer(container);
-
-                // Attach reset listeners to existing buttons
-                attachResetListeners(container);
-
-                // Inject our custom buttons if missing
-                if (!container.querySelector(`[data-map-id="${MAP_OPTIONS[0].id}"]`)) {
-
-                    // Add Section Header "Mapy.cz"
-                    // Strava uses this structure: <div class="MapDisplayControl_header__fIIDH"><span class="...">Map Styles</span></div>
-                    // We need to mimic that or just simpler text.
-                    const header = document.createElement('div');
-                    // Try to reuse Strava header class if possible, otherwise generic
-                    // "MapDisplayControl_header__fIIDH" might be unstable, let's use the one found in the page or just style it.
-                    // We can check if there is an existing header to copy classes from.
-                    const existingHeader = container.closest('.MapDisplayControl_section__jcjve')?.querySelector('[class*="MapDisplayControl_header"]');
-                    if (existingHeader) {
-                        header.className = existingHeader.className;
-                    } else {
-                        // Fallback style
-                        header.style.padding = '8px 16px 4px';
-                        header.style.fontWeight = '600';
-                        header.style.fontSize = '12px';
-                    }
-
-                    const headerSpan = document.createElement('span');
-                    if (existingHeader) {
-                        const existingSpan = existingHeader.querySelector('span');
-                        if (existingSpan) headerSpan.className = existingSpan.className;
-                    }
-                    headerSpan.textContent = 'Mapy.cz';
-                    header.appendChild(headerSpan);
-
-                    // Strava's grid doesn't really support sections INSIDE the grid (all buttons are siblings).
-                    // If we add a div here, it might break the CSS grid layout.
-                    // Strava's layout is: Section -> Header -> Options Container -> Buttons.
-                    // We are appending TO the Options Container.
-                    // If the Options Container is `display: grid`, adding a full-width header inside needs `grid-column: 1 / -1`.
-
-                    header.style.gridColumn = '1 / -1';
-                    header.style.marginTop = '12px'; // Spacing from Strava buttons
-                    header.style.marginBottom = '4px';
-
-                    container.appendChild(header);
-
-                    MAP_OPTIONS.forEach(opt => {
-                        container.appendChild(createButton(opt));
-                    });
-
-                    // Add Section Header "OpenStreetMap"
-                    const osmHeader = header.cloneNode(true);
-                    osmHeader.querySelector('span').textContent = 'OpenStreetMap';
-                    container.appendChild(osmHeader);
-
-                    OSM_OPTIONS.forEach(opt => {
-                        container.appendChild(createButton(opt));
-                    });
-
-                    // Add Section Header "Google Maps"
-                    const googleHeader = header.cloneNode(true);
-                    googleHeader.querySelector('span').textContent = 'Google Maps';
-                    container.appendChild(googleHeader);
-
-                    GOOGLE_OPTIONS.forEach(opt => {
-                        container.appendChild(createButton(opt));
-                    });
-
-                    // --- Visual Adjustments Section ---
-                    // --- Styling Controls ---
-                    const controlsHeader = header.cloneNode(true);
-                    controlsHeader.id = 'moremaps-styling-header';
-                    controlsHeader.querySelector('span').textContent = STRINGS.UI.STYLING_HEADER;
-                    controlsHeader.style.marginTop = '16px';
-                    container.appendChild(controlsHeader);
-
-                    const controlsContainer = document.createElement('div');
-                    controlsContainer.id = 'moremaps-styling-section';
-                    controlsContainer.style.gridColumn = '1 / -1';
-                    controlsContainer.style.padding = '0';
-                    controlsContainer.style.display = 'flex';
-                    controlsContainer.style.flexDirection = 'column';
-                    controlsContainer.style.gap = '0';
-
-                    // --- Opacity Slider ---
-                    const initialOpacity = localStorage.getItem(STORAGE_KEYS.OPACITY) || '1';
-                    const opaLabel = document.createElement('label');
-                    opaLabel.style.display = 'flex';
-                    opaLabel.style.flexDirection = 'column';
-                    opaLabel.style.gap = '0';
-                    opaLabel.style.padding = '4px 8px';
-
-                    const opaHeader = document.createElement('div');
-                    opaHeader.style.display = 'flex';
-                    opaHeader.style.justifyContent = 'space-between';
-                    opaHeader.style.alignItems = 'center';
-
-                    const opaLabelText = document.createElement('span');
-                    opaLabelText.className = 'element_body1__VB3SZ element_fontSizeXs__sfPOR element_fontWeightBook__Cmleq';
-                    opaLabelText.textContent = STRINGS.UI.OPACITY_LABEL;
-
-                    const opaValueText = document.createElement('span');
-                    opaValueText.className = 'element_body1__VB3SZ element_fontSizeXs__sfPOR element_fontWeightBook__Cmleq';
-                    opaValueText.textContent = `${Math.round(parseFloat(initialOpacity) * 100)}%`;
-
-                    opaHeader.appendChild(opaLabelText);
-                    opaHeader.appendChild(opaValueText);
-
-                    const opaInput = document.createElement('input');
-                    opaInput.type = 'range';
-                    opaInput.min = '0';
-                    opaInput.max = '1';
-                    opaInput.step = '0.05';
-                    opaInput.value = initialOpacity;
-                    opaInput.style.width = '100%';
-                    opaInput.style.accentColor = '#fc4c02';
-                    opaInput.style.height = '12px';
-                    opaInput.style.cursor = 'pointer';
-
-                    opaInput.addEventListener('input', (e) => {
-                        const val = e.target.value;
-                        opaValueText.textContent = `${Math.round(val * 100)}%`;
-                        localStorage.setItem(STORAGE_KEYS.OPACITY, val);
-                        window.postMessage({
-                            type: 'MOREMAPS_MAP_MOD_OPACITY',
-                            value: val
-                        }, '*');
-                    });
-
-                    opaLabel.appendChild(opaHeader);
-                    opaLabel.appendChild(opaInput);
-                    controlsContainer.appendChild(opaLabel);
-
-                    // --- Saturation Slider ---
-                    const initialSatSlider = localStorage.getItem(STORAGE_KEYS.SATURATION_SLIDER) || '1';
-                    const satLabel = document.createElement('label');
-                    satLabel.style.display = 'flex';
-                    satLabel.style.flexDirection = 'column';
-                    satLabel.style.gap = '0';
-                    satLabel.style.padding = '4px 8px';
-
-                    const satHeader = document.createElement('div');
-                    satHeader.style.display = 'flex';
-                    satHeader.style.justifyContent = 'space-between';
-                    satHeader.style.alignItems = 'center';
-
-                    const satLabelText = document.createElement('span');
-                    satLabelText.className = 'element_body1__VB3SZ element_fontSizeXs__sfPOR element_fontWeightBook__Cmleq';
-                    satLabelText.textContent = STRINGS.UI.SATURATION_LABEL;
-
-                    const satValueText = document.createElement('span');
-                    satValueText.className = 'element_body1__VB3SZ element_fontSizeXs__sfPOR element_fontWeightBook__Cmleq';
-                    satValueText.textContent = `${Math.round(parseFloat(initialSatSlider) * 100)}%`;
-
-                    satHeader.appendChild(satLabelText);
-                    satHeader.appendChild(satValueText);
-
-                    const satInput = document.createElement('input');
-                    satInput.type = 'range';
-                    satInput.min = '0';
-                    satInput.max = '1';
-                    satInput.step = '0.05';
-                    satInput.value = initialSatSlider;
-                    satInput.style.width = '100%';
-                    satInput.style.accentColor = '#fc4c02';
-                    satInput.style.height = '12px';
-                    satInput.style.cursor = 'pointer';
-
-                    satInput.addEventListener('input', (e) => {
-                        const val = parseFloat(e.target.value);
-                        satValueText.textContent = `${Math.round(val * 100)}%`;
-
-                        // Map 0..1 to -1..0 (Grayscale to Normal)
-                        const mapboxVal = val - 1;
-                        localStorage.setItem(STORAGE_KEYS.SATURATION_SLIDER, val);
-                        localStorage.setItem(STORAGE_KEYS.SATURATION_MAPBOX, mapboxVal);
-
-                        window.postMessage({
-                            type: 'MOREMAPS_MAP_MOD_SATURATION',
-                            value: mapboxVal
-                        }, '*');
-                    });
-
-                    satLabel.appendChild(satHeader);
-                    satLabel.appendChild(satInput);
-                    controlsContainer.appendChild(satLabel);
-
-                    // Explainer Text
-                    const explainer = document.createElement('div');
-                    explainer.style.fontSize = '10px';
-                    explainer.style.color = '#888';
-                    explainer.style.padding = '2px 8px 8px';
-                    explainer.style.lineHeight = '1.2';
-                    explainer.textContent = STRINGS.UI.STYLING_EXPLAINER;
-                    controlsContainer.appendChild(explainer);
-
-                    container.appendChild(controlsContainer);
-
-                    // Initial state check
-                    const isCustom = [...MAP_OPTIONS, ...OSM_OPTIONS].some(opt => opt.id === activeMapId);
-                    updateStylingControls(isCustom);
-                }
-            }
+    // When a custom provider is active, Strava still marks its own (unchanged)
+    // style button as selected — clear it so only our button is outlined.
+    if (activeMapId !== 'strava-default') {
+        menu.querySelectorAll(`[class*="${native.optionButton}"]`).forEach(b => {
+            if (!b.dataset.mmMapId) b.classList.remove(native.selected);
         });
     }
-});
+}
 
-/**
- * Create and inject panorama button in the map control area (top-left)
- */
+// ---------------------------------------------------------------------------
+// Panorama toggle + provider switcher, placed under "Find my location"
+// ---------------------------------------------------------------------------
 function createPanoramaButton() {
-    // Check if button already exists in the DOM
-    if (document.getElementById('strava-panorama-control')) {
-        return;
-    }
+    const findMe = document.querySelector('[class*="MapViewControls_findMe"]');
+    if (!findMe) return;
+    const findMeBtn = findMe.closest('[class*="ControlButton_controlButton"]');
+    const findMeGroup = findMe.closest('[class*="ControlButton_controlGroup"]');
+    const column = findMe.closest('[class*="ControlButton_container"]');
+    if (!findMeBtn || !column) return;
+    // The top-left region is a flex row; append our group as a second column to
+    // the right of the native controls (location + zoom), top-aligned.
+    const topLeft = column.parentElement;
+    if (!topLeft) return;
 
-    // Find the Mapbox control container (top-left)
-    const ctrlContainer = document.querySelector('.mapboxgl-ctrl-top-left');
-    if (!ctrlContainer) {
-        return;
-    }
+    if (document.getElementById('strava-panorama-control')) return;
 
-    // Create the control group div
-    const controlGroup = document.createElement('div');
-    controlGroup.id = 'strava-panorama-control';
-    controlGroup.className = 'mapboxgl-ctrl mapboxgl-ctrl-group';
-    controlGroup.style.cssText = `
-        display: flex !important;
-        flex-direction: row !important;
-        align-items: center !important;
-        width: auto !important;
-        max-width: none !important;
-        overflow: visible !important;
-        background: white !important;
-        border-radius: 4px !important;
-        box-shadow: 0 0 0 2px rgba(0,0,0,0.1) !important;
-    `;
+    // Match the native control's size/shape exactly.
+    const h = findMeBtn.offsetHeight || 29;
+    const gcs = getComputedStyle(findMeGroup || findMeBtn);
+    const radius = gcs.borderRadius && gcs.borderRadius !== '0px' ? gcs.borderRadius : '4px';
+    const shadow = gcs.boxShadow && gcs.boxShadow !== 'none' ? gcs.boxShadow : '0 1px 3px rgba(0,0,0,0.3)';
 
-    // Create the button
+    // Own group: eye button + provider selector side by side, matching the
+    // original layout, blending with Strava's controls.
+    const group = document.createElement('div');
+    group.dataset.mmPanoGroup = '1';
+    group.style.cssText = `align-self:flex-start; margin-left:10px; height:${h}px; display:flex; flex-direction:row; align-items:stretch; overflow:hidden; background:#fff; border-radius:${radius}; box-shadow:${shadow};`;
+
     const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'mapboxgl-ctrl-icon';
+    btn.id = 'strava-panorama-control';
+    btn.className = findMeBtn.className; // clone native control button styling
     btn.title = STRINGS.UI.PANORAMA_TOOLTIP;
-    btn.style.display = 'flex';
-    btn.style.alignItems = 'center';
-    btn.style.justifyContent = 'center';
     btn.setAttribute('aria-label', 'Panorama Mode');
+    btn.style.borderRadius = '0';
+    btn.style.height = h + 'px';
 
-    // SVG icon for panorama (eye icon)
-    const eyeIcon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    eyeIcon.setAttribute('fill', 'currentColor');
-    eyeIcon.setAttribute('viewBox', '0 0 16 16');
-    eyeIcon.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
-    eyeIcon.setAttribute('width', '18');
-    eyeIcon.setAttribute('height', '18');
-
-    const eyePath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-    eyePath.setAttribute('d', 'M8 3C4.5 3 1.5 5.5 0 8c1.5 2.5 4.5 5 8 5s6.5-2.5 8-5c-1.5-2.5-4.5-5-8-5zm0 8.5c-1.933 0-3.5-1.567-3.5-3.5S6.067 4.5 8 4.5s3.5 1.567 3.5 3.5-1.567 3.5-3.5 3.5zm0-5.5c-1.105 0-2 .895-2 2s.895 2 2 2 2-.895 2-2-.895-2-2-2z');
-    eyeIcon.appendChild(eyePath);
-
-    btn.appendChild(eyeIcon);
-    controlGroup.appendChild(btn);
-
-    // Create Provider Selector
-    const selector = document.createElement('select');
-    selector.id = 'moremaps-panorama-provider-selector';
-    selector.style.cssText = `
-        border: none !important;
-        background: transparent !important;
-        font-size: 11px !important;
-        font-weight: 700 !important;
-        padding: 0 4px 0 2px !important;
-        height: 29px !important;
-        border-left: 1px solid #eee !important;
-        cursor: pointer !important;
-        outline: none !important;
-        color: #333 !important;
-        appearance: auto !important;
-        -webkit-appearance: menulist !important;
-        margin: 0 !important;
-        min-width: 38px !important;
-        text-align: center !important;
-    `;
-
-    const optMapy = document.createElement('option');
-    optMapy.value = 'mapy';
-    optMapy.textContent = 'Mapy.cz';
-
-    const optGoogle = document.createElement('option');
-    optGoogle.value = 'google';
-    optGoogle.textContent = 'Google';
-
-    selector.appendChild(optMapy);
-    selector.appendChild(optGoogle);
-
-    // Initial value
-    selector.value = localStorage.getItem(STORAGE_KEYS.PANO_PROVIDER) || 'mapy';
-
-    selector.addEventListener('change', (e) => {
-        const val = e.target.value;
-        localStorage.setItem(STORAGE_KEYS.PANO_PROVIDER, val);
-        window.postMessage({ type: 'MOREMAPS_API_KEY_UPDATED' }, '*');
-    });
-
-    controlGroup.appendChild(selector);
-
-    // Toggle functionality
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('viewBox', '0 0 16 16'); svg.setAttribute('width', '16'); svg.setAttribute('height', '16'); svg.setAttribute('fill', 'currentColor'); svg.setAttribute('aria-hidden', 'true');
+    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    path.setAttribute('d', 'M8 3C4.5 3 1.5 5.5 0 8c1.5 2.5 4.5 5 8 5s6.5-2.5 8-5c-1.5-2.5-4.5-5-8-5zm0 8.5c-1.933 0-3.5-1.567-3.5-3.5S6.067 4.5 8 4.5s3.5 1.567 3.5 3.5-1.567 3.5-3.5 3.5zm0-5.5c-1.105 0-2 .895-2 2s.895 2 2 2 2-.895 2-2-.895-2-2-2z');
+    svg.appendChild(path);
+    btn.appendChild(svg);
+    btn.addEventListener('click', onPanoramaClick);
     panoramaButtonEl = btn;
-    panoramaEyeIcon = eyeIcon;
-    panoramaXIcon = null;
 
-    btn.addEventListener('click', () => {
-        const newState = !isPanoramaActive;
-
-        // If enabling, check for key
-        if (newState) {
-            const provider = localStorage.getItem(STORAGE_KEYS.PANO_PROVIDER) || 'mapy';
-            const key = provider === 'mapy' ? localStorage.getItem(STORAGE_KEYS.MAPY_KEY) : localStorage.getItem(STORAGE_KEYS.GOOGLE_KEY);
-            if (!key) {
-                showSettingsModal(true, provider === 'mapy' ? STORAGE_KEYS.MAPY_KEY : STORAGE_KEYS.GOOGLE_KEY);
-                return;
-            }
-        }
-
-        updatePanoramaUI(newState);
-        window.postMessage({ type: 'MOREMAPS_PANORAMA_TOGGLE', active: newState }, '*');
+    // Provider switcher (Mapy.cz / Google), like the original.
+    const selector = document.createElement('select');
+    selector.id = 'moremaps-pano-provider';
+    selector.title = 'Panorama provider';
+    selector.style.cssText = 'box-sizing:border-box; height:100%; border:none; border-left:1px solid #e6e6e6; background:transparent; font-size:11px; font-weight:700; padding:0 2px 0 6px; cursor:pointer; outline:none; color:#333; appearance:auto; -webkit-appearance:menulist;';
+    [['mapy', STRINGS.SETTINGS.PROVIDER_MAPY], ['google', 'Google']].forEach(([v, l]) => {
+        const o = document.createElement('option'); o.value = v; o.textContent = l; selector.appendChild(o);
     });
-
-    // Prepend to top-left to be above geolocate
-    ctrlContainer.prepend(controlGroup);
-
-    console.log('More Maps: Panorama control added!');
-}
-
-// --- Settings Button and Modal ---
-
-let settingsModalInjected = false;
-let settingsButtonInjected = false;
-
-function showSettingsModal(showInstructions = false, highlightKey = null) {
-    injectSettingsModal();
-    const modal = document.getElementById('moremaps-settings-modal');
-    if (modal) {
-        modal.style.display = 'flex';
-        if (showInstructions) {
-            const instr = document.getElementById('moremaps-api-instructions');
-            if (instr) instr.style.display = 'block';
-        }
-        if (highlightKey) {
-            const input = document.getElementById(`input-${highlightKey}`);
-            if (input) {
-                input.style.border = '2px solid #fc4c02';
-                input.style.backgroundColor = '#fff5f2';
-                input.focus();
-            }
-        }
-    }
-}
-
-function injectSettingsModal() {
-    if (settingsModalInjected || document.getElementById('moremaps-settings-modal')) return;
-
-    const modal = document.createElement('div');
-    modal.id = 'moremaps-settings-modal';
-    modal.style.cssText = `
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        background: rgba(0,0,0,0.7);
-        display: none;
-        align-items: center;
-        justify-content: center;
-        z-index: 10000;
-        font-family: "Boathouse", "Noto Sans", "Segoe UI", sans-serif;
-    `;
-
-    const content = document.createElement('div');
-    content.style.cssText = `
-        background: white;
-        padding: 32px;
-        border-radius: 12px;
-        width: 450px;
-        max-width: 90%;
-        box-shadow: 0 8px 32px rgba(0,0,0,0.3);
-        position: relative;
-    `;
-
-    const headerWrapper = document.createElement('div');
-    headerWrapper.style.display = 'flex';
-    headerWrapper.style.alignItems = 'center';
-    headerWrapper.style.gap = '12px';
-    headerWrapper.style.marginBottom = '24px';
-
-    const orangeIcon = document.createElement('img');
-    orangeIcon.src = browser.runtime.getURL('icons/icon_orange.svg');
-    orangeIcon.style.width = '24px';
-    orangeIcon.style.height = '24px';
-
-    const title = document.createElement('h2');
-    title.textContent = STRINGS.UI.SETTINGS_TITLE;
-    title.style.margin = '0';
-    title.style.fontSize = '24px';
-    title.style.color = '#333';
-
-    headerWrapper.appendChild(orangeIcon);
-    headerWrapper.appendChild(title);
-
-    const closeBtn = document.createElement('button');
-    closeBtn.textContent = '×';
-    closeBtn.style.cssText = `
-        position: absolute;
-        top: 16px;
-        right: 16px;
-        background: none;
-        border: none;
-        font-size: 24px;
-        cursor: pointer;
-        color: #999;
-        z-index: 10001;
-    `;
-    closeBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        modal.style.display = 'none';
-    });
-
-    // Constants already extracted at the top level
-
-    const createApiLink = (url, label = STRINGS.SETTINGS.GET_KEY) => {
-        const a = document.createElement('a');
-        a.href = url;
-        a.target = '_blank';
-        a.style.cssText = 'color:#fc4c02; text-decoration:underline; display:inline-flex; align-items:center; margin-left:8px; vertical-align:middle; font-size:11px; font-weight:500;';
-        a.innerHTML = `<span style="margin-right:4px;">${label}</span><svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><line x1="7" y1="17" x2="17" y2="7"></line><polyline points="7 7 17 7 17 17"></polyline></svg>`;
-        return a;
-    };
-
-    const apiKeysHeading = document.createElement('div');
-    apiKeysHeading.style.cssText = 'display:flex; align-items:center; gap:8px; font-size:16px; font-weight:700; color:#333; margin: 8px 0 16px 0; padding-top: 16px; border-top: 1px solid #eee; text-align:left;';
-    apiKeysHeading.innerHTML = `
-        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="color:#fc4c02;">
-            <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3-3.5 3.5z"></path>
-        </svg>
-        <span>${STRINGS.SETTINGS.API_KEYS_HEADER}</span>
-    `;
-
-    const apiKeysExplainer = document.createElement('p');
-    apiKeysExplainer.style.cssText = 'font-size:12px; color:#666; margin:0 0 16px 0; line-height:1.5;';
-    apiKeysExplainer.innerHTML = STRINGS.SETTINGS.API_KEYS_EXPLAINER;
-
-    const labelMapy = document.createElement('label');
-    labelMapy.style.cssText = 'display:flex; align-items:center; margin-bottom:8px; font-weight:600; text-align:left; font-size:13px; color:#333; width:100%;';
-    labelMapy.innerHTML = `<span>${STRINGS.SETTINGS.MAPY_LABEL}</span>`;
-    labelMapy.appendChild(createApiLink(STRINGS.SETTINGS.API_LINKS.MAPY, STRINGS.SETTINGS.GET_KEY));
-
-    const inputMapy = document.createElement('input');
-    inputMapy.id = `input-${STORAGE_KEYS.MAPY_KEY}`;
-    inputMapy.type = 'text';
-    inputMapy.placeholder = STRINGS.SETTINGS.MAPY_PLACEHOLDER;
-    inputMapy.value = localStorage.getItem(STORAGE_KEYS.MAPY_KEY) || '';
-    inputMapy.style.cssText = 'width:100%; padding:10px 12px; border:1px solid #ddd; border-radius:6px; margin-bottom:16px; font-size:12px; font-family:monospace; transition: border 0.2s, background-color 0.2s;';
-    inputMapy.oninput = () => {
-        inputMapy.style.border = '1px solid #ddd';
-        inputMapy.style.backgroundColor = 'white';
-    };
-
-    const labelGoogle = document.createElement('label');
-    labelGoogle.style.cssText = 'display:flex; align-items:center; margin-bottom:8px; font-weight:600; text-align:left; font-size:13px; color:#333; width:100%;';
-    labelGoogle.innerHTML = `<span>${STRINGS.SETTINGS.GOOGLE_LABEL}</span>`;
-    labelGoogle.appendChild(createApiLink(STRINGS.SETTINGS.API_LINKS.GOOGLE, STRINGS.SETTINGS.GET_KEY_GOOGLE));
-
-    const inputGoogle = document.createElement('input');
-    inputGoogle.id = `input-${STORAGE_KEYS.GOOGLE_KEY}`;
-    inputGoogle.type = 'text';
-    inputGoogle.placeholder = STRINGS.SETTINGS.GOOGLE_PLACEHOLDER;
-    inputGoogle.value = localStorage.getItem(STORAGE_KEYS.GOOGLE_KEY) || '';
-    inputGoogle.style.cssText = 'width:100%; padding:10px 12px; border:1px solid #ddd; border-radius:6px; margin-bottom:16px; font-size:12px; font-family:monospace; transition: border 0.2s, background-color 0.2s;';
-    inputGoogle.oninput = () => {
-        inputGoogle.style.border = '1px solid #ddd';
-        inputGoogle.style.backgroundColor = 'white';
-    };
-
-    const labelTF = document.createElement('label');
-    labelTF.style.cssText = 'display:flex; align-items:center; margin-bottom:8px; font-weight:600; text-align:left; font-size:13px; color:#333; width:100%;';
-    labelTF.innerHTML = `<span>${STRINGS.SETTINGS.TF_LABEL}</span>`;
-    labelTF.appendChild(createApiLink(STRINGS.SETTINGS.API_LINKS.TF));
-
-    const inputTF = document.createElement('input');
-    inputTF.id = `input-${STORAGE_KEYS.TF_KEY}`;
-    inputTF.type = 'text';
-    inputTF.placeholder = STRINGS.SETTINGS.TF_PLACEHOLDER;
-    inputTF.value = localStorage.getItem(STORAGE_KEYS.TF_KEY) || '';
-    inputTF.style.cssText = 'width:100%; padding:10px 12px; border:1px solid #ddd; border-radius:6px; margin-bottom:16px; font-size:12px; font-family:monospace; transition: border 0.2s, background-color 0.2s;';
-    inputTF.oninput = () => {
-        inputTF.style.border = '1px solid #ddd';
-        inputTF.style.backgroundColor = 'white';
-    };
-
-
-
-
-
-    const storageInfo = document.createElement('div');
-    storageInfo.style.cssText = 'font-size:11px; color:#888; margin-bottom:24px; text-align:left;';
-    storageInfo.textContent = STRINGS.UI.API_KEYS_NOTICE;
-
-    const saveBtn = document.createElement('button');
-    saveBtn.style.cssText = 'width:100%; padding:12px; background:#fc4c02; color:white; border:none; border-radius:6px; font-weight:600; cursor:pointer; font-size:16px; transition:background 0.2s; display:flex; align-items:center; justify-content:center; gap:8px;';
-
-    const saveIcon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    saveIcon.setAttribute('viewBox', '0 0 24 24');
-    saveIcon.setAttribute('width', '18');
-    saveIcon.setAttribute('height', '18');
-    saveIcon.setAttribute('fill', 'none');
-    saveIcon.setAttribute('stroke', 'currentColor');
-    saveIcon.setAttribute('stroke-width', '2.5');
-    saveIcon.setAttribute('stroke-linecap', 'round');
-    saveIcon.setAttribute('stroke-linejoin', 'round');
-    saveIcon.innerHTML = '<polyline points="20 6 9 17 4 12"></polyline>';
-
-    const saveText = document.createElement('span');
-    saveText.textContent = STRINGS.UI.SAVE_BUTTON;
-
-    saveBtn.appendChild(saveIcon);
-    saveBtn.appendChild(saveText);
-    saveBtn.onclick = async () => {
-        localStorage.setItem(STORAGE_KEYS.MAPY_KEY, inputMapy.value.trim());
-        localStorage.setItem(STORAGE_KEYS.TF_KEY, inputTF.value.trim());
-
-        const googleKey = inputGoogle.value.trim();
-        localStorage.setItem(STORAGE_KEYS.GOOGLE_KEY, googleKey);
-
-        // Clear any highlights
-        [inputMapy, inputGoogle, inputTF].forEach(inp => {
-            inp.style.border = '1px solid #ddd';
-            inp.style.backgroundColor = 'white';
-        });
-
-        modal.style.display = 'none';
-
+    selector.value = localStorage.getItem(STORAGE_KEYS.PANO_PROVIDER) || 'mapy';
+    selector.addEventListener('change', (e) => {
+        localStorage.setItem(STORAGE_KEYS.PANO_PROVIDER, e.target.value);
         window.postMessage({ type: 'MOREMAPS_API_KEY_UPDATED' }, '*');
-    };
+    });
 
-    const resetBtn = document.createElement('button');
-    resetBtn.style.cssText = 'width:100%; padding:8px; background:transparent; color:#999; border:none; border-radius:6px; font-weight:500; cursor:pointer; font-size:12px; margin-top:12px; text-decoration:underline; display:flex; align-items:center; justify-content:center; gap:6px;';
-
-    const resetIcon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    resetIcon.setAttribute('viewBox', '0 0 24 24');
-    resetIcon.setAttribute('width', '14');
-    resetIcon.setAttribute('height', '14');
-    resetIcon.setAttribute('fill', 'none');
-    resetIcon.setAttribute('stroke', 'currentColor');
-    resetIcon.setAttribute('stroke-width', '2');
-    resetIcon.setAttribute('stroke-linecap', 'round');
-    resetIcon.setAttribute('stroke-linejoin', 'round');
-    resetIcon.innerHTML = '<polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line>';
-
-    const resetText = document.createElement('span');
-    resetText.textContent = STRINGS.UI.RESET_BUTTON;
-
-    resetBtn.appendChild(resetIcon);
-    resetBtn.appendChild(resetText);
-    resetBtn.onclick = () => {
-        if (confirm(STRINGS.UI.DELETE_DATA_CONFIRM)) {
-            // Find all keys starting with moremaps_ and remove them
-            const keysToRemove = [];
-            for (let i = 0; i < localStorage.length; i++) {
-                const key = localStorage.key(i);
-                if (key && key.startsWith('moremaps_')) {
-                    keysToRemove.push(key);
-                }
-            }
-            keysToRemove.forEach(k => localStorage.removeItem(k));
-            window.location.reload();
-        }
-    };
-
-    content.appendChild(closeBtn);
-    content.appendChild(headerWrapper);
-    content.appendChild(apiKeysHeading);
-    content.appendChild(apiKeysExplainer);
-    content.appendChild(labelMapy);
-    content.appendChild(inputMapy);
-    content.appendChild(labelGoogle);
-    content.appendChild(inputGoogle);
-    content.appendChild(labelTF);
-    content.appendChild(inputTF);
-    content.appendChild(storageInfo);
-    content.appendChild(saveBtn);
-    content.appendChild(resetBtn);
-    modal.appendChild(content);
-    document.body.appendChild(modal);
-
-    settingsModalInjected = true;
+    group.appendChild(btn);
+    group.appendChild(selector);
+    topLeft.appendChild(group); // second column, right of the native controls
 }
 
+// ---------------------------------------------------------------------------
+// Settings button — native nav item, placed next to "My Routes"
+// ---------------------------------------------------------------------------
 function createSettingsButton() {
-    if (settingsButtonInjected || document.querySelector('[data-key="more-maps-settings"]')) return;
-
+    if (document.querySelector('[data-key="more-maps-settings"]')) return;
     const myRoutes = document.querySelector('[data-key="my-routes"]');
     if (!myRoutes) return;
+    const link = myRoutes.querySelector('a, button');
 
-    const itemDiv = document.createElement('div');
-    itemDiv.className = 'react-horizontal-scrolling-menu--item';
-    itemDiv.setAttribute('data-key', 'more-maps-settings');
+    const item = document.createElement('div');
+    item.className = myRoutes.className; // react-horizontal-scrolling-menu--item
+    item.setAttribute('data-key', 'more-maps-settings');
 
-    const innerDiv = document.createElement('div');
-
+    const inner = document.createElement('div');
     const btn = document.createElement('button');
-    btn.className = 'Button_btn__EdK33 Button_default__JSqPI MapNav_linkButton__nZjYH MapNav_mapButtonShadow__pUy0N';
+    btn.className = link ? link.className : 'Button_btn__EdK33 Button_default__JSqPI MapNav_linkButton__nZjYH MapNav_mapButtonShadow__pUy0N';
+    btn.type = 'button';
     btn.style.display = 'flex';
     btn.style.alignItems = 'center';
     btn.style.gap = '8px';
 
-    // Black icon
     const icon = document.createElement('img');
     icon.src = browser.runtime.getURL('icons/icon_black.svg');
     icon.style.width = '16px';
@@ -863,54 +328,170 @@ function createSettingsButton() {
 
     btn.appendChild(icon);
     btn.appendChild(label);
-
-    btn.onclick = () => showSettingsModal();
-
-    innerDiv.appendChild(btn);
-    itemDiv.appendChild(innerDiv);
-
-    myRoutes.after(itemDiv);
-    settingsButtonInjected = true;
+    btn.addEventListener('click', showSettingsModal);
+    inner.appendChild(btn);
+    item.appendChild(inner);
+    myRoutes.after(item);
 }
 
-// Observer for panorama button injection
-const navObserver = new MutationObserver(() => {
+function onPanoramaClick() {
+    const newState = !isPanoramaActive;
+    if (newState) {
+        const provider = localStorage.getItem(STORAGE_KEYS.PANO_PROVIDER) || 'mapy';
+        const key = provider === 'mapy' ? localStorage.getItem(STORAGE_KEYS.MAPY_KEY) : localStorage.getItem(STORAGE_KEYS.GOOGLE_KEY);
+        if (!key) {
+            showSettingsModal(true, provider === 'mapy' ? STORAGE_KEYS.MAPY_KEY : STORAGE_KEYS.GOOGLE_KEY);
+            return;
+        }
+    }
+    updatePanoramaUI(newState);
+    window.postMessage({ type: 'MOREMAPS_PANORAMA_TOGGLE', active: newState }, '*');
+}
+
+// ---------------------------------------------------------------------------
+// Settings modal
+// ---------------------------------------------------------------------------
+let settingsModalInjected = false;
+
+function showSettingsModal(showInstructions = false, highlightKey = null) {
+    injectSettingsModal();
+    const modal = document.getElementById('moremaps-settings-modal');
+    if (!modal) return;
+    modal.style.display = 'flex';
+    if (showInstructions) {
+        const instr = document.getElementById('moremaps-api-instructions');
+        if (instr) instr.style.display = 'block';
+    }
+    if (highlightKey) {
+        const input = document.getElementById(`input-${highlightKey}`);
+        if (input) { input.style.border = `2px solid ${ORANGE}`; input.style.backgroundColor = '#fff5f2'; input.focus(); }
+    }
+}
+
+function injectSettingsModal() {
+    if (settingsModalInjected || document.getElementById('moremaps-settings-modal')) return;
+
+    const modal = document.createElement('div');
+    modal.id = 'moremaps-settings-modal';
+    modal.style.cssText = `position: fixed; top:0; left:0; width:100%; height:100%; background: rgba(0,0,0,0.7); display:none; align-items:center; justify-content:center; z-index:10000; font-family:"Boathouse","Noto Sans","Segoe UI",sans-serif;`;
+
+    const content = document.createElement('div');
+    content.style.cssText = `background:white; padding:32px; border-radius:12px; width:450px; max-width:90%; box-shadow:0 8px 32px rgba(0,0,0,0.3); position:relative; max-height:90vh; overflow-y:auto;`;
+
+    const headerWrapper = document.createElement('div');
+    headerWrapper.style.cssText = 'display:flex; align-items:center; gap:12px; margin-bottom:24px;';
+    const orangeIcon = document.createElement('img');
+    orangeIcon.src = browser.runtime.getURL('icons/icon_orange.svg');
+    orangeIcon.style.cssText = 'width:24px; height:24px;';
+    const title = document.createElement('h2');
+    title.textContent = STRINGS.UI.SETTINGS_TITLE;
+    title.style.cssText = 'margin:0; font-size:24px; color:#333;';
+    headerWrapper.appendChild(orangeIcon); headerWrapper.appendChild(title);
+
+    const closeBtn = document.createElement('button');
+    closeBtn.textContent = '×';
+    closeBtn.style.cssText = `position:absolute; top:16px; right:16px; background:none; border:none; font-size:24px; cursor:pointer; color:#999; z-index:10001;`;
+    closeBtn.addEventListener('click', (e) => { e.stopPropagation(); modal.style.display = 'none'; });
+
+    const createApiLink = (url, label = STRINGS.SETTINGS.GET_KEY) => {
+        const a = document.createElement('a');
+        a.href = url; a.target = '_blank';
+        a.style.cssText = 'color:#fc4c02; text-decoration:underline; display:inline-flex; align-items:center; margin-left:8px; vertical-align:middle; font-size:11px; font-weight:500;';
+        a.innerHTML = `<span style="margin-right:4px;">${label}</span><svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><line x1="7" y1="17" x2="17" y2="7"></line><polyline points="7 7 17 7 17 17"></polyline></svg>`;
+        return a;
+    };
+
+    const instructions = document.createElement('div');
+    instructions.id = 'moremaps-api-instructions';
+    instructions.style.cssText = 'display:none; background:#fff5f2; border:1px solid #ffd9c9; border-radius:8px; padding:12px 14px; margin-bottom:16px;';
+    instructions.innerHTML = `<div style="font-weight:700; color:#333; font-size:13px; margin-bottom:4px;">${STRINGS.SETTINGS.INSTRUCTIONS_TITLE}</div><div style="font-size:12px; color:#666;">${STRINGS.SETTINGS.INSTRUCTIONS_TEXT}</div>`;
+
+    const apiKeysExplainer = document.createElement('p');
+    apiKeysExplainer.style.cssText = 'font-size:12px; color:#666; margin:0 0 16px 0; line-height:1.5;';
+    apiKeysExplainer.innerHTML = STRINGS.SETTINGS.API_KEYS_EXPLAINER;
+
+    const makeField = (labelText, storageKey, placeholder, link) => {
+        const label = document.createElement('label');
+        label.style.cssText = 'display:flex; align-items:center; margin-bottom:8px; font-weight:600; text-align:left; font-size:13px; color:#333; width:100%;';
+        label.innerHTML = `<span>${labelText}</span>`;
+        if (link) label.appendChild(link);
+        const input = document.createElement('input');
+        input.id = `input-${storageKey}`; input.type = 'text'; input.placeholder = placeholder;
+        input.value = localStorage.getItem(storageKey) || '';
+        input.style.cssText = 'width:100%; padding:10px 12px; border:1px solid #ddd; border-radius:6px; margin-bottom:16px; font-size:12px; font-family:monospace; box-sizing:border-box;';
+        input.oninput = () => { input.style.border = '1px solid #ddd'; input.style.backgroundColor = 'white'; };
+        return { label, input };
+    };
+
+    const mapy = makeField(STRINGS.SETTINGS.MAPY_LABEL, STORAGE_KEYS.MAPY_KEY, STRINGS.SETTINGS.MAPY_PLACEHOLDER, createApiLink(STRINGS.SETTINGS.API_LINKS.MAPY, STRINGS.SETTINGS.GET_KEY));
+    const google = makeField(STRINGS.SETTINGS.GOOGLE_LABEL, STORAGE_KEYS.GOOGLE_KEY, STRINGS.SETTINGS.GOOGLE_PLACEHOLDER, createApiLink(STRINGS.SETTINGS.API_LINKS.GOOGLE, STRINGS.SETTINGS.GET_KEY_GOOGLE));
+    const tf = makeField(STRINGS.SETTINGS.TF_LABEL, STORAGE_KEYS.TF_KEY, STRINGS.SETTINGS.TF_PLACEHOLDER, createApiLink(STRINGS.SETTINGS.API_LINKS.TF));
+
+    const storageInfo = document.createElement('div');
+    storageInfo.style.cssText = 'font-size:11px; color:#888; margin-bottom:24px; text-align:left;';
+    storageInfo.textContent = STRINGS.UI.API_KEYS_NOTICE;
+
+    const saveBtn = document.createElement('button');
+    saveBtn.style.cssText = 'width:100%; padding:12px; background:#fc4c02; color:white; border:none; border-radius:6px; font-weight:600; cursor:pointer; font-size:16px;';
+    saveBtn.textContent = STRINGS.UI.SAVE_BUTTON;
+    saveBtn.onclick = () => {
+        localStorage.setItem(STORAGE_KEYS.MAPY_KEY, mapy.input.value.trim());
+        localStorage.setItem(STORAGE_KEYS.GOOGLE_KEY, google.input.value.trim());
+        localStorage.setItem(STORAGE_KEYS.TF_KEY, tf.input.value.trim());
+        modal.style.display = 'none';
+        window.postMessage({ type: 'MOREMAPS_API_KEY_UPDATED' }, '*');
+    };
+
+    const resetBtn = document.createElement('button');
+    resetBtn.style.cssText = 'width:100%; padding:8px; background:transparent; color:#999; border:none; font-weight:500; cursor:pointer; font-size:12px; margin-top:12px; text-decoration:underline;';
+    resetBtn.textContent = STRINGS.UI.RESET_BUTTON;
+    resetBtn.onclick = () => {
+        if (confirm(STRINGS.UI.DELETE_DATA_CONFIRM)) {
+            const keys = [];
+            for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (k && k.startsWith('moremaps_')) keys.push(k); }
+            keys.forEach(k => localStorage.removeItem(k));
+            window.location.reload();
+        }
+    };
+
+    content.appendChild(closeBtn); content.appendChild(headerWrapper);
+    content.appendChild(instructions); content.appendChild(apiKeysExplainer);
+    content.appendChild(mapy.label); content.appendChild(mapy.input);
+    content.appendChild(google.label); content.appendChild(google.input);
+    content.appendChild(tf.label); content.appendChild(tf.input);
+    content.appendChild(storageInfo); content.appendChild(saveBtn); content.appendChild(resetBtn);
+    modal.appendChild(content);
+    modal.addEventListener('click', (e) => { if (e.target === modal) modal.style.display = 'none'; });
+    document.body.appendChild(modal);
+    settingsModalInjected = true;
+}
+
+// ---------------------------------------------------------------------------
+// Init
+// ---------------------------------------------------------------------------
+const observer = new MutationObserver(() => {
+    const menu = document.querySelector('[class*="MapPreferences_menuContainer"]');
+    if (menu) injectIntoMenu(menu);
     createPanoramaButton();
     createSettingsButton();
 });
 
 function init() {
-    if (!document.body) {
-        requestAnimationFrame(init);
-        return;
-    }
+    if (!document.body) { requestAnimationFrame(init); return; }
     observer.observe(document.body, { childList: true, subtree: true });
-    navObserver.observe(document.body, { childList: true, subtree: true });
-
-    // Try to inject immediately
+    const menu = document.querySelector('[class*="MapPreferences_menuContainer"]');
+    if (menu) injectIntoMenu(menu);
     createPanoramaButton();
     createSettingsButton();
-    injectSettingsModal();
 
     document.addEventListener('keydown', (e) => {
         if (e.key !== 'p' && e.key !== 'P') return;
         const tag = document.activeElement?.tagName;
         if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
-
-        const newState = !isPanoramaActive;
-        if (newState) {
-            const provider = localStorage.getItem(STORAGE_KEYS.PANO_PROVIDER) || 'mapy';
-            const key = provider === 'mapy' ? localStorage.getItem(STORAGE_KEYS.MAPY_KEY) : localStorage.getItem(STORAGE_KEYS.GOOGLE_KEY);
-            if (!key) {
-                showSettingsModal(true, provider === 'mapy' ? STORAGE_KEYS.MAPY_KEY : STORAGE_KEYS.GOOGLE_KEY);
-                return;
-            }
-        }
-        updatePanoramaUI(newState);
-        window.postMessage({ type: 'MOREMAPS_PANORAMA_TOGGLE', active: newState }, '*');
+        onPanoramaClick();
     });
 
-    console.log('More Maps: UI Observer started');
+    console.log('More Maps: UI observer started');
 }
 
 if (document.readyState === 'loading') {

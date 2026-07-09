@@ -2,13 +2,13 @@
  * More Maps for Strava - Configuration
  */
 var MoreMapsConfig = {
+    // Strava's /maps now uses a proprietary WebGL vector engine (FATMAP CoreMap),
+    // not Mapbox. The extension mounts its control into the map's top-left UI
+    // controls and drives the engine directly (see inject.js).
     SELECTORS: {
-        CONTAINER: '[class*="MapDisplayControl_options"]',
-        BUTTON: 'MapDisplayControl_optionButton',
-        IMAGE: 'MapDisplayControl_option',
-        TEXT: ['element_body1', 'element_fontSize2xs'],
-        SELECTED_CLASS: 'MapDisplayControl_selected',
-        NAV_MENU: '.react-horizontal-scrolling-menu--scroll-container'
+        MAP_CANVAS: '#canvas',
+        MAP_CONTAINER: '[class*="CoreMap_coreMap"]',
+        UI_CONTROLS_TOP_LEFT: '[class*="UIControls_topLeft"]'
     },
 
     MAP_OPTIONS: [

@@ -3,434 +3,94 @@
     const getApiKey = () => localStorage.getItem(STORAGE_KEYS.MAPY_KEY) || '';
     const getTFKey = () => localStorage.getItem(STORAGE_KEYS.TF_KEY) || '';
 
-    // Config: Use @2x tiles if pixel ratio > 1 for supported layers
-    const isRetina = window.devicePixelRatio > 1;
-    const retinaTiles = isRetina ? '256@2x' : '256';
+    // The FATMAP carrier source expects 256px tiles. Retina (@2x / 512px) tiles
+    // render blank, so all providers must use plain 256 templates.
+
+    // The raster "carrier" source we hijack. Strava's map is a proprietary WebGL
+    // vector engine (FATMAP SDK) with no Mapbox-style addLayer API. Several map
+    // types register a full-coverage raster tile source whose URL template we can
+    // repoint at any {z}/{x}/{y} raster provider.
+    //
+    // We use the TOPO_WINTER_HYBRID map type + its "winter-overlay-imagery" source:
+    // unlike the SATELLITE_SUMMER carrier, this one renders the raster FLAT (no
+    // aggressive terrain hillshade), so custom flat maps (Mapy/OSM/Google) look
+    // clean, and Strava's heatmap/route overlays still composite on top.
+    const CARRIER_SOURCE = 'winter-overlay-imagery';
+    const CARRIER_MAP_TYPE = 2; // STRAVA_PLANET_TOPO_WINTER_HYBRID
+    // Default template Strava ships (fallback for restore if we can't read it live).
+    const CARRIER_DEFAULT_URL = '{STRAVA_TILE_SERVER_URL}/winter-imagery/{quadkey}.png?groupId={groupId}';
+
+    // Map the ?style= URL param to a FATMAP MapType enum value. Use the plain
+    // (non-EXPERIMENT) types: the EXPERIMENT variants (5-9) render blank in some
+    // browsers (e.g. Firefox), whereas 0-4 render reliably (our carrier is 2).
+    const STYLE_TO_MAPTYPE = {
+        standard: 0, // STRAVA_PLANET_TOPO_LIGHT
+        dark: 1,     // STRAVA_PLANET_TOPO_DARK
+        winter: 2,   // STRAVA_PLANET_TOPO_WINTER_HYBRID
+        hybrid: 3,   // STRAVA_PLANET_HYBRID
+        satellite: 4 // STRAVA_PLANET_SATELLITE_SUMMER
+    };
 
     /**
-     * Configuration for Mapy.cz sources.
+     * Provider tile sources. Each resolves to a single {z}/{x}/{y} raster template.
+     * The FATMAP engine substitutes {x}/{y}/{z} just like Mapbox raster sources.
      */
     const MAP_SOURCES = {
         'mapycz-regular': {
-            // Basic supports @2x
-            url: `https://api.mapy.com/v1/maptiles/basic/${retinaTiles}/{z}/{x}/{y}?apikey=\${API_KEY}`,
-            attribution: '&copy; <a href="https://mapy.cz/" target="_blank">Mapy.cz</a>, &copy; OpenStreetMap contributors'
+            url: 'https://api.mapy.com/v1/maptiles/basic/256/{z}/{x}/{y}?apikey=${API_KEY}'
         },
         'mapycz-outdoor': {
-            // Outdoor supports @2x
-            url: `https://api.mapy.com/v1/maptiles/outdoor/${retinaTiles}/{z}/{x}/{y}?apikey=\${API_KEY}`,
-            attribution: '&copy; <a href="https://mapy.cz/" target="_blank">Mapy.cz</a>, &copy; OpenStreetMap contributors'
+            url: 'https://api.mapy.com/v1/maptiles/outdoor/256/{z}/{x}/{y}?apikey=${API_KEY}'
         },
         'mapycz-winter': {
-            // Winter does NOT support @2x
-            url: `https://api.mapy.com/v1/maptiles/winter/256/{z}/{x}/{y}?apikey=\${API_KEY}`,
-            attribution: '&copy; <a href="https://mapy.cz/" target="_blank">Mapy.cz</a>, &copy; OpenStreetMap contributors'
+            url: `https://api.mapy.com/v1/maptiles/winter/256/{z}/{x}/{y}?apikey=\${API_KEY}`
         },
         'mapycz-satellite': {
-            // Aerial does NOT support @2x
-            url: `https://api.mapy.com/v1/maptiles/aerial/256/{z}/{x}/{y}?apikey=\${API_KEY}`,
-            attribution: '&copy; <a href="https://mapy.cz/" target="_blank">Mapy.cz</a>'
+            url: `https://api.mapy.com/v1/maptiles/aerial/256/{z}/{x}/{y}?apikey=\${API_KEY}`
         },
         'osm-regular': {
-            url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-            attribution: '&copy; OpenStreetMap contributors'
+            url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png'
         },
         'osm-cyclosm': {
-            url: [
-                'https://a.tile-cyclosm.openstreetmap.fr/cyclosm/{z}/{x}/{y}.png',
-                'https://b.tile-cyclosm.openstreetmap.fr/cyclosm/{z}/{x}/{y}.png',
-                'https://c.tile-cyclosm.openstreetmap.fr/cyclosm/{z}/{x}/{y}.png'
-            ],
-            attribution: '&copy; CyclOSM contributors, OpenStreetMap'
+            url: 'https://a.tile-cyclosm.openstreetmap.fr/cyclosm/{z}/{x}/{y}.png'
         },
         'osm-cycle': {
-            url: [
-                'https://a.tile.thunderforest.com/cycle/{z}/{x}/{y}.png?apikey=\${API_KEY}',
-                'https://b.tile.thunderforest.com/cycle/{z}/{x}/{y}.png?apikey=\${API_KEY}',
-                'https://c.tile.thunderforest.com/cycle/{z}/{x}/{y}.png?apikey=\${API_KEY}'
-            ],
-            attribution: '&copy; Thunderforest, OpenStreetMap'
+            url: 'https://tile.thunderforest.com/cycle/{z}/{x}/{y}.png?apikey=\${API_KEY}'
         },
         'google-regular': {
-            url: [
-                'https://mt0.google.com/vt/lyrs=m&x={x}&y={y}&z={z}',
-                'https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}',
-                'https://mt2.google.com/vt/lyrs=m&x={x}&y={y}&z={z}',
-                'https://mt3.google.com/vt/lyrs=m&x={x}&y={y}&z={z}'
-            ],
-            attribution: '&copy; Google'
+            url: 'https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}'
         },
         'google-satellite': {
-            url: [
-                'https://mt0.google.com/vt/lyrs=s&x={x}&y={y}&z={z}',
-                'https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}',
-                'https://mt2.google.com/vt/lyrs=s&x={x}&y={y}&z={z}',
-                'https://mt3.google.com/vt/lyrs=s&x={x}&y={y}&z={z}'
-            ],
-            attribution: '&copy; Google'
+            url: 'https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}'
         },
         'google-terrain': {
-            url: [
-                'https://mt0.google.com/vt/lyrs=p&x={x}&y={y}&z={z}',
-                'https://mt1.google.com/vt/lyrs=p&x={x}&y={y}&z={z}',
-                'https://mt2.google.com/vt/lyrs=p&x={x}&y={y}&z={z}',
-                'https://mt3.google.com/vt/lyrs=p&x={x}&y={y}&z={z}'
-            ],
-            attribution: '&copy; Google'
+            url: 'https://mt1.google.com/vt/lyrs=p&x={x}&y={y}&z={z}'
         },
         'google-hybrid': {
-            url: [
-                'https://mt0.google.com/vt/lyrs=y&x={x}&y={y}&z={z}',
-                'https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}',
-                'https://mt2.google.com/vt/lyrs=y&x={x}&y={y}&z={z}',
-                'https://mt3.google.com/vt/lyrs=y&x={x}&y={y}&z={z}'
-            ],
-            attribution: '&copy; Google'
+            url: 'https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}'
         }
     };
 
     /**
-     * Manages Strava map instances and layer manipulation.
+     * Drives Strava's FATMAP (CoreMap) engine to swap base tiles and run panorama.
      */
     class MoreMapsManager {
         constructor() {
-            this.maps = [];
+            this.engine = null;
             this.poller = null;
-
-            // Load persisted visuals or use defaults
-            const savedOpacity = localStorage.getItem(STORAGE_KEYS.OPACITY);
-            const savedSaturation = localStorage.getItem(STORAGE_KEYS.SATURATION_MAPBOX);
-
-            this.visuals = {
-                grayscale: false,
-                opacity: savedOpacity !== null ? parseFloat(savedOpacity) : 1,
-                saturation: savedSaturation !== null ? parseFloat(savedSaturation) : 0
-            };
             this.currentMapType = 'strava-default';
+            this.savedCarrierUrl = null;   // Strava's original carrier template
+            this.viewListener = null;      // re-assert listener while a custom map is active
+            this.desiredUrl = null;        // provider URL we expect the carrier to hold
         }
 
-        /**
-         * Start the manager.
-         */
         start() {
-            // Listen for internal messages from the content script
             window.addEventListener('message', this.handleMessage.bind(this));
-
-            // Poll for new map instances
-            this.poller = setInterval(() => this.findMaps(), 2000);
-
-            // Initial scan
-            this.findMaps();
+            this.poller = setInterval(() => this.findEngine(), 2000);
+            this.findEngine();
         }
 
-        isMapAlive(map) {
-            try {
-                return map && map.style != null && typeof map.getStyle === 'function';
-            } catch (e) {
-                return false;
-            }
-        }
-
-        watchForContextLoss(map) {
-            const canvas = map.getCanvas && map.getCanvas();
-            if (!canvas) return;
-            canvas.addEventListener('webglcontextlost', () => {
-                console.warn('More Maps: WebGL context lost, removing dead map instance');
-                this.maps = this.maps.filter(m => m !== map);
-            }, { once: true });
-        }
-
-        /**
-         * Handle incoming map switch (and modification) requests.
-         */
-        handleMessage(event) {
-            if (event.source !== window || !event.data) return;
-
-            if (event.data.type === 'MOREMAPS_MAP_SWITCH') {
-                const { mapType } = event.data;
-                this.currentMapType = mapType;
-                this.findMaps(); // Ensure we have latest maps
-                this.maps.forEach(map => this.applyMapStyle(map, mapType));
-            } else if (event.data.type === 'MOREMAPS_MAP_MOD_GRAYSCALE') {
-                this.visuals.grayscale = event.data.value;
-                this.updateAllVisuals();
-            } else if (event.data.type === 'MOREMAPS_MAP_MOD_OPACITY') {
-                this.visuals.opacity = event.data.value;
-                this.updateAllVisuals();
-            } else if (event.data.type === 'MOREMAPS_MAP_MOD_SATURATION') {
-                this.visuals.saturation = event.data.value;
-                this.updateAllVisuals();
-            } else if (event.data.type === 'MOREMAPS_PANORAMA_TOGGLE') {
-                this.handlePanoramaToggle(event.data.active);
-            } else if (event.data.type === 'MOREMAPS_API_KEY_UPDATED') {
-                // Key changed, refresh active layer
-                if (this.currentMapType !== 'strava-default') {
-                    this.findMaps();
-                    this.maps.forEach(map => this.applyMapStyle(map, this.currentMapType));
-                }
-            }
-        }
-
-        setAttribution(map, html) {
-            const container = map.getContainer && map.getContainer();
-            if (!container) return;
-            let el = container.querySelector('.moremaps-attribution');
-            if (!html) {
-                if (el) el.remove();
-                return;
-            }
-            if (!el) {
-                el = document.createElement('div');
-                el.className = 'moremaps-attribution';
-                el.style.cssText = 'position:absolute;bottom:0;right:0;z-index:10;background:rgba(255,255,255,0.75);padding:2px 5px;font-size:11px;line-height:1.4;pointer-events:auto;';
-                container.appendChild(el);
-            }
-            el.innerHTML = html;
-        }
-
-        /**
-         * Apply the selected map style to a map instance.
-         */
-        applyMapStyle(map, mapType) {
-            if (!this.isMapAlive(map)) return;
-            try {
-                // Clean up existing custom layers
-                if (map.getLayer('mapycz-layer')) map.removeLayer('mapycz-layer');
-                if (map.getSource('mapycz-source')) map.removeSource('mapycz-source');
-
-                // Handle Reset
-                if (mapType === 'strava-default') {
-                    this.setStravaVisibility(map, true);
-                    this.setAttribution(map, null);
-                    return;
-                }
-
-                // Handle Mapy.cz types
-                const config = MAP_SOURCES[mapType];
-                if (!config) return;
-
-                console.log('More Maps: Switching to', mapType);
-
-                // Hide Strava's composite layers (buildings, roads, labels)
-                this.setStravaVisibility(map, false);
-
-                // Add Custom Source
-                let apiKey;
-                if (mapType.startsWith('osm-cycle')) {
-                    apiKey = getTFKey();
-                } else if (!mapType.startsWith('google-')) {
-                    apiKey = getApiKey();
-                }
-                const rawTiles = Array.isArray(config.url) ? config.url : [config.url];
-                const finalTiles = rawTiles.map(t => t.replace('${API_KEY}', apiKey || ''));
-
-                map.addSource('mapycz-source', {
-                    'type': 'raster',
-                    'tiles': finalTiles,
-                    'tileSize': 256,
-                    'attribution': config.attribution
-                });
-
-                // Add Mapy.cz Layer
-                const beforeId = this.findInsertionPoint(map);
-                map.addLayer({
-                    'id': 'mapycz-layer',
-                    'type': 'raster',
-                    'source': 'mapycz-source',
-                    'paint': {
-                        'raster-opacity': parseFloat(this.visuals.opacity),
-                        'raster-saturation': this.visuals.grayscale ? -1 : parseFloat(this.visuals.saturation)
-                    }
-                }, beforeId);
-
-                this.setAttribution(map, config.attribution);
-
-            } catch (e) {
-                console.error('More Maps: Error applying layer', e);
-            }
-        }
-
-        updateAllVisuals() {
-            this.maps = this.maps.filter(m => this.isMapAlive(m));
-            this.maps.forEach(map => {
-                try {
-                    if (map.getLayer('mapycz-layer')) {
-                        map.setPaintProperty('mapycz-layer', 'raster-opacity', parseFloat(this.visuals.opacity));
-                        map.setPaintProperty('mapycz-layer', 'raster-saturation', this.visuals.grayscale ? -1 : parseFloat(this.visuals.saturation));
-                    }
-                } catch (e) {
-                    console.warn('More Maps: error updating visuals, removing dead map', e);
-                    this.maps = this.maps.filter(m => m !== map);
-                }
-            });
-        }
-
-        /**
-         * Handle panorama mode toggle
-         */
-        handlePanoramaToggle(active) {
-
-
-            // Ensure we have the latest maps
-            this.findMaps();
-
-            // Get the first map instance (usually there's only one)
-            const map = this.maps[0];
-
-            if (!map) {
-                console.warn('No map instance found for panorama');
-                return;
-            }
-
-            // Wait for panorama module to load if needed
-            const tryToggle = (attempts = 0) => {
-                if (typeof window.MoreMapsPanorama !== 'undefined') {
-
-                    if (active) {
-                        window.MoreMapsPanorama.enable(map);
-                    } else {
-                        window.MoreMapsPanorama.disable(map);
-                    }
-                } else if (attempts < 20) {
-                    // Retry after a short delay (increased to 20 attempts)
-                    if (attempts === 0) {
-                        console.log('Waiting for panorama module to load...');
-                    }
-                    setTimeout(() => tryToggle(attempts + 1), 200);
-                } else {
-                    console.error('Panorama module failed to load. window.MoreMapsPanorama is:', typeof window.MoreMapsPanorama);
-                    console.error('Available window properties:', Object.keys(window).filter(k => k.includes('Strava')));
-                }
-            };
-
-            tryToggle();
-        }
-
-        /**
-         * Toggle visibility of Strava's base vector layers.
-         */
-        setStravaVisibility(map, visible) {
-            const style = map.getStyle();
-            if (!style || !style.layers) return;
-
-            style.layers.forEach(layer => {
-                // We want to hide the BASE map (Strava's map) but KEEP the overlays (Heatmap, Routes, etc.)
-                // Previously we only checked for source === 'composite'.
-                // Now we strictly hide everything unless it matches our "keep" keywords.
-
-                const id = layer.id.toLowerCase();
-                const isMapyCz = id === 'mapycz-layer';
-
-                // Keywords that definitely indicate it's NOT a base map layer
-                const hasOverlayKeyword = id.includes('heat') ||
-                    id.includes('route') ||
-                    id.includes('segment') ||
-                    id.includes('marker') ||
-                    id.includes('selected') ||
-                    id.includes('polyline') ||
-                    id.includes('waypoint') ||
-                    id.includes('direction') ||
-                    id.includes('builder') ||
-                    id.includes('active') ||
-                    id.includes('draw') ||
-                    id.includes('origin') ||
-                    id.includes('destination') ||
-                    id.includes('ghost') ||
-                    id.includes('personal');
-
-                // Keywords that indicate it's a BASE map layer (even if it matches keywords above)
-                const isBaseMapKeyword = id.includes('surface') ||
-                    id.includes('road') ||
-                    id.includes('bridge') ||
-                    id.includes('tunnel') ||
-                    id.includes('admin') ||
-                    id.includes('boundary') ||
-                    id.includes('water') ||
-                    id.includes('land') ||
-                    id.includes('building');
-
-                const isOverlay = hasOverlayKeyword && !isBaseMapKeyword;
-
-                if (!isMapyCz && !isOverlay) {
-                    map.setLayoutProperty(layer.id, 'visibility', visible ? 'visible' : 'none');
-                }
-            });
-        }
-
-        /**
-         * Find the optimal layer ID to insert our raster tiles before.
-         * We want to be below heatmaps, routes, markers, etc.
-         */
-        findInsertionPoint(map) {
-            const style = map.getStyle();
-            if (!style || !style.layers) return undefined;
-
-            for (const layer of style.layers) {
-                const id = layer.id.toLowerCase();
-
-                const hasOverlayKeyword = id.includes('heat') ||
-                    id.includes('route') ||
-                    id.includes('segment') ||
-                    id.includes('marker') ||
-                    id.includes('selected') ||
-                    id.includes('polyline') ||
-                    id.includes('waypoint') ||
-                    id.includes('direction') ||
-                    id.includes('active') ||
-                    id.includes('draw') ||
-                    id.includes('origin') ||
-                    id.includes('destination') ||
-                    id.includes('suggested') ||
-                    id.includes('editor') ||
-                    id.includes('ghost');
-
-                const isBaseMapKeyword = id.includes('surface') ||
-                    id.includes('road') ||
-                    id.includes('bridge') ||
-                    id.includes('tunnel') ||
-                    id.includes('admin') ||
-                    id.includes('boundary');
-
-                const isOverlay = (hasOverlayKeyword && !isBaseMapKeyword) ||
-                    layer.type === 'symbol' ||
-                    (layer.source && layer.source !== 'composite' && layer.source !== 'mapbox' && !id.includes('label'));
-
-                if (isOverlay && id !== 'mapycz-layer') {
-                    return id;
-                }
-            }
-            return undefined;
-        }
-
-        /**
-         * Scan the DOM for Mapbox canvases and extract the Map instance via React Fiber.
-         */
-        findMaps() {
-            const canvases = document.querySelectorAll('.mapboxgl-canvas');
-            if (canvases.length === 0) return;
-
-            canvases.forEach(canvas => {
-                // Traverse up from canvas to find React Fiber
-                let domNode = canvas;
-                let attempts = 0;
-                while (domNode && attempts < 10) {
-                    const fiber = this.getReactFiber(domNode);
-                    if (fiber) {
-                        const map = this.scanFiberForMap(fiber);
-                        if (map && !this.maps.includes(map)) {
-                            console.log('%cMore Maps: Map CAPTURED!', 'color: green', map);
-                            this.maps.push(map);
-                            this.watchForContextLoss(map);
-                        }
-                        if (map) return;
-                    }
-                    domNode = domNode.parentElement;
-                    attempts++;
-                }
-            });
-        }
-
-        // --- React Fiber Helpers ---
+        // --- Engine discovery (React Fiber) ---
 
         getReactFiber(dom) {
             for (const key in dom) {
@@ -441,83 +101,315 @@
             return null;
         }
 
+        isEngine(o) {
+            try {
+                return o && typeof o === 'object' &&
+                    typeof o.setMapType === 'function' &&
+                    typeof o.getTileSources === 'function' &&
+                    typeof o.switchToCustomStyleUrl === 'function';
+            } catch (e) {
+                return false;
+            }
+        }
+
         /**
-         * Heuristically scan a Fiber node for a Mapbox GL Map instance.
+         * Locate the live FATMAP engine instance by BFS-ing the React Fiber tree
+         * rooted at the CoreMap container (props, hooks, stateNode).
          */
-        scanFiberForMap(fiber) {
-            let curr = fiber;
-            let attempts = 0;
+        findEngine(force) {
+            // React can remount the map (soft nav, popover), leaving our cached
+            // handle pointing at a dead engine that still has the methods. On user
+            // actions we force a fresh scan so we always drive the LIVE engine.
+            if (!force && this.isEngine(this.engine)) return this.engine;
+            const prevEngine = this.engine;
+            this.engine = null;
 
-            while (curr && attempts < 50) {
-                // Check Props
-                if (curr.memoizedProps) {
-                    const map = this.checkProps(curr.memoizedProps);
-                    if (map) return map;
-                }
+            const canvas = document.querySelector('#canvas, canvas');
+            const root = document.querySelector('[class*="CoreMap_coreMap"]') ||
+                document.querySelector('[class*="Map_map"]') || canvas;
+            if (!root) return null;
 
-                // Check StateNode
-                if (curr.stateNode) {
-                    if (this.isMapInstance(curr.stateNode)) return curr.stateNode;
-                    // Shallow check of properties on stateNode
-                    if (typeof curr.stateNode === 'object') {
-                        // Try/Catch for restricted access properties
-                        try {
-                            for (const key in curr.stateNode) {
-                                if (this.isMapInstance(curr.stateNode[key])) return curr.stateNode[key];
+            const start = this.getReactFiber(root) ||
+                (root.parentElement && this.getReactFiber(root.parentElement));
+            if (!start) return null;
+
+            const objSeen = new Set();
+            const rec = (o) => {
+                if (this.engine || !o || (typeof o !== 'object' && typeof o !== 'function') || objSeen.has(o)) return;
+                objSeen.add(o);
+                if (this.isEngine(o)) this.engine = o;
+            };
+
+            const fSeen = new Set();
+            const queue = [start];
+            let steps = 0;
+            while (queue.length && steps < 9000 && !this.engine) {
+                const c = queue.shift();
+                steps++;
+                if (!c || fSeen.has(c)) continue;
+                fSeen.add(c);
+                try {
+                    if (c.memoizedProps) for (const k in c.memoizedProps) {
+                        rec(c.memoizedProps[k]);
+                        const v = c.memoizedProps[k];
+                        if (v && typeof v === 'object') for (const k2 in v) { try { rec(v[k2]); } catch (e) {} }
+                    }
+                } catch (e) {}
+                try {
+                    if (c.stateNode && typeof c.stateNode === 'object') {
+                        rec(c.stateNode);
+                        for (const k in c.stateNode) { try { rec(c.stateNode[k]); } catch (e) {} }
+                    }
+                } catch (e) {}
+                try {
+                    if (c.memoizedState) {
+                        let h = c.memoizedState, hi = 0;
+                        while (h && hi < 120) {
+                            if (h.memoizedState) {
+                                rec(h.memoizedState);
+                                if (h.memoizedState.current) rec(h.memoizedState.current);
+                                if (typeof h.memoizedState === 'object') for (const k in h.memoizedState) { try { rec(h.memoizedState[k]); } catch (e) {} }
                             }
-                        } catch (e) { }
-                    }
-                }
-
-                // Check Hooks (useRef, useState)
-                if (curr.memoizedState) {
-                    let hook = curr.memoizedState;
-                    while (hook) {
-                        if (hook.memoizedState) {
-                            if (hook.memoizedState.current && this.isMapInstance(hook.memoizedState.current)) return hook.memoizedState.current;
-                            if (this.isMapInstance(hook.memoizedState)) return hook.memoizedState;
+                            h = h.next; hi++;
                         }
-                        hook = hook.next;
                     }
-                }
-
-                // Check Context
-                if (curr.dependencies) {
-                    let dep = curr.dependencies.firstContext;
-                    while (dep) {
-                        if (dep.context && dep.context._currentValue) {
-                            const val = dep.context._currentValue;
-                            if (this.isMapInstance(val)) return val;
-                            if (val && typeof val === 'object' && this.isMapInstance(val.map)) return val.map;
-                        }
-                        dep = dep.next;
-                    }
-                }
-
-                curr = curr.return;
-                attempts++;
+                } catch (e) {}
+                if (c.child) queue.push(c.child);
+                if (c.sibling) queue.push(c.sibling);
+                if (c.return && !fSeen.has(c.return)) queue.push(c.return);
             }
-            return null;
+
+            if (this.engine) {
+                // Only re-apply the active custom map when we captured a genuinely
+                // NEW engine instance (a remount) — not on every forced re-scan.
+                // Re-applying calls clearCache() and would reload all tiles, which
+                // is why toggling panorama used to flash a full reload.
+                if (this.engine !== prevEngine) {
+                    console.log('%cMore Maps: FATMAP engine CAPTURED', 'color: green', this.engine);
+                    if (this.currentMapType !== 'strava-default') {
+                        this.applyMapStyle(this.currentMapType);
+                    }
+                }
+            }
+            return this.engine;
         }
 
-        checkProps(props) {
-            for (const key in props) {
-                const val = props[key];
-                if (this.isMapInstance(val)) return val;
-                if (val && typeof val === 'object' && this.isMapInstance(val.map)) return val.map;
+        // --- Message handling ---
+
+        handleMessage(event) {
+            if (event.source !== window || !event.data) return;
+            const data = event.data;
+
+            if (data.type === 'MOREMAPS_MAP_SWITCH') {
+                this.currentMapType = data.mapType;
+                this.findEngine(true);
+                this.applyMapStyle(data.mapType);
+            } else if (data.type === 'MOREMAPS_MAP_CLEAR') {
+                // Strava's native style button does the map-type switch itself.
+                // We only clean up passively — NO setMapType (crashes Firefox's
+                // WASM), NO clearCache/requestRender (would fight Strava's switch).
+                this.currentMapType = 'strava-default';
+                this.findEngine(true);
+                this.softClear();
+            } else if (data.type === 'MOREMAPS_API_KEY_UPDATED') {
+                if (this.currentMapType !== 'strava-default') {
+                    this.findEngine(true);
+                    this.applyMapStyle(this.currentMapType);
+                }
+            } else if (data.type === 'MOREMAPS_PANORAMA_TOGGLE') {
+                this.handlePanoramaToggle(data.active);
             }
-            return null;
+            // Opacity/saturation are unsupported by the FATMAP engine; ignored.
         }
 
-        isMapInstance(obj) {
-            return obj &&
-                typeof obj.addLayer === 'function' &&
-                typeof obj.addSource === 'function' &&
-                (typeof obj.getStyle === 'function' || typeof obj.style !== 'undefined');
+        // --- Tile swapping ---
+
+        getTileSourcesApi() {
+            try { return this.engine.getTileSources(); } catch (e) { return null; }
+        }
+
+        readCarrierUrl(tsApi) {
+            try {
+                const list = JSON.parse(JSON.stringify(tsApi.getTileSources()));
+                const s = list.find(x => x.name === CARRIER_SOURCE);
+                return s ? s.templateUrl : null;
+            } catch (e) { return null; }
+        }
+
+        resolveUrl(mapType) {
+            const config = MAP_SOURCES[mapType];
+            if (!config) return null;
+            let apiKey = '';
+            if (mapType === 'osm-cycle') apiKey = getTFKey();
+            else if (mapType.startsWith('mapycz-')) apiKey = getApiKey();
+            return config.url.replace('${API_KEY}', apiKey || '');
+        }
+
+        applyMapStyle(mapType) {
+            if (!this.isEngine(this.engine)) return;
+
+            if (mapType === 'strava-default') {
+                this.restore();
+                return;
+            }
+
+            const url = this.resolveUrl(mapType);
+            if (!url) return;
+
+            try {
+                // Activate the raster carrier map type (registers the carrier source).
+                this.engine.setMapType(CARRIER_MAP_TYPE);
+
+                const tsApi = this.getTileSourcesApi();
+                if (!tsApi) return;
+
+                // Capture Strava's original carrier template once, so reset can restore it.
+                if (this.savedCarrierUrl === null) {
+                    this.savedCarrierUrl = this.readCarrierUrl(tsApi) || CARRIER_DEFAULT_URL;
+                }
+
+                console.log('More Maps: switching base tiles to', mapType);
+                tsApi.setTileSourceTemplateUrl(CARRIER_SOURCE, url);
+                this.desiredUrl = url;
+
+                // Hide Strava's own labels/POI so they don't double up with the
+                // provider's baked-in labels. (Terrain hillshade cannot be safely
+                // removed — setIsTerrain3dEnabled freezes the engine's next render.)
+                try { this.engine.setEnableScreenSymbols(false); } catch (e) {}
+
+                try { this.engine.getDebugApi().clearCache(); } catch (e) {}
+                try { this.engine.requestRender(); } catch (e) {}
+
+                // Safety net: re-assert the override shortly after activation, in
+                // case switching the map type let the carrier's default tiles (the
+                // "winter" base) win the initial render race.
+                setTimeout(() => {
+                    if (this.desiredUrl !== url || !this.isEngine(this.engine)) return;
+                    try {
+                        const ts = this.getTileSourcesApi();
+                        if (ts && this.readCarrierUrl(ts) !== url) {
+                            ts.setTileSourceTemplateUrl(CARRIER_SOURCE, url);
+                            this.engine.getDebugApi().clearCache();
+                            this.engine.requestRender();
+                        }
+                    } catch (e) {}
+                }, 400);
+            } catch (e) {
+                console.error('More Maps: error applying tiles', e);
+            }
+        }
+
+        // Passive cleanup when the user clicks a native Strava style button.
+        // Strava's own handler switches the map type; we just re-enable labels and
+        // restore the carrier's original tile template. No setMapType (Firefox WASM
+        // crash) and no clearCache/requestRender (would fight Strava's switch).
+        softClear() {
+            this.desiredUrl = null;
+            if (!this.isEngine(this.engine)) return;
+            try { this.engine.setEnableScreenSymbols(true); } catch (e) {}
+            try {
+                const tsApi = this.getTileSourcesApi();
+                if (tsApi && this.savedCarrierUrl) {
+                    tsApi.setTileSourceTemplateUrl(CARRIER_SOURCE, this.savedCarrierUrl);
+                }
+            } catch (e) {}
+        }
+
+        // Drop our override, restoring Strava's original carrier tiles, without
+        // touching the map type (Strava's own click handler sets it).
+        clearOverride() {
+            this.removeReassert();
+            this.desiredUrl = null;
+            if (!this.isEngine(this.engine)) return;
+            try { this.engine.setEnableScreenSymbols(true); } catch (e) {}
+            try {
+                const tsApi = this.getTileSourcesApi();
+                if (tsApi && this.savedCarrierUrl) {
+                    tsApi.setTileSourceTemplateUrl(CARRIER_SOURCE, this.savedCarrierUrl);
+                    try { this.engine.getDebugApi().clearCache(); } catch (e) {}
+                    try { this.engine.requestRender(); } catch (e) {}
+                }
+            } catch (e) {
+                console.error('More Maps: error clearing override', e);
+            }
+        }
+
+        restore() {
+            this.removeReassert();
+            this.desiredUrl = null;
+            if (!this.isEngine(this.engine)) return;
+            try { this.engine.setEnableScreenSymbols(true); } catch (e) {}
+            try {
+                const tsApi = this.getTileSourcesApi();
+                if (tsApi && this.savedCarrierUrl) {
+                    tsApi.setTileSourceTemplateUrl(CARRIER_SOURCE, this.savedCarrierUrl);
+                }
+                // Restore the map type Strava had (best-effort from the URL ?style=).
+                const style = new URLSearchParams(location.search).get('style') || 'standard';
+                const mt = STYLE_TO_MAPTYPE[style] != null ? STYLE_TO_MAPTYPE[style] : 0;
+                this.engine.setMapType(mt);
+                try { this.engine.getDebugApi().clearCache(); } catch (e) {}
+                try { this.engine.requestRender(); } catch (e) {}
+            } catch (e) {
+                console.error('More Maps: error restoring', e);
+            }
+        }
+
+        /**
+         * Strava's React layer owns the map type and can re-assert it (e.g. after a
+         * soft navigation). A lightweight view-update listener re-applies our carrier
+         * override if it detects the template drifting back to Strava's.
+         */
+        installReassert() {
+            if (this.viewListener || !this.isEngine(this.engine)) return;
+            const self = this;
+            this.viewListener = {
+                onViewUpdated: () => {
+                    if (!self.desiredUrl || !self.isEngine(self.engine)) return;
+                    try {
+                        const tsApi = self.getTileSourcesApi();
+                        if (!tsApi) return;
+                        const cur = self.readCarrierUrl(tsApi);
+                        if (cur !== self.desiredUrl) {
+                            self.engine.setMapType(CARRIER_MAP_TYPE);
+                            tsApi.setTileSourceTemplateUrl(CARRIER_SOURCE, self.desiredUrl);
+                        }
+                    } catch (e) {}
+                }
+            };
+            try { this.engine.addViewUpdateListener(this.viewListener); } catch (e) { this.viewListener = null; }
+        }
+
+        removeReassert() {
+            if (this.viewListener && this.isEngine(this.engine)) {
+                try { this.engine.removeViewUpdateListener(this.viewListener); } catch (e) {}
+            }
+            this.viewListener = null;
+        }
+
+        // --- Panorama ---
+
+        handlePanoramaToggle(active) {
+            this.findEngine(true);
+            if (!this.engine) {
+                console.warn('More Maps: no engine for panorama');
+                return;
+            }
+            const engine = this.engine;
+            const tryToggle = (attempts = 0) => {
+                if (typeof window.MoreMapsPanorama !== 'undefined') {
+                    if (active) window.MoreMapsPanorama.enable(engine);
+                    else window.MoreMapsPanorama.disable(engine);
+                } else if (attempts < 20) {
+                    setTimeout(() => tryToggle(attempts + 1), 200);
+                } else {
+                    console.error('More Maps: panorama module failed to load');
+                }
+            };
+            tryToggle();
         }
     }
 
-    // Instantiate and start
     const manager = new MoreMapsManager();
     manager.start();
 })();

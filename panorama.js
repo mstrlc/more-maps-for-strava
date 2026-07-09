@@ -14,7 +14,8 @@
         window: null,
         iframe: null,
         marker: null,
-        map: null,
+        engine: null,
+        tapListener: null,
         ratios: { width: 0.4, height: 0.4 },
         docked: { bottom: true, right: true },
         domClickBound: null,
@@ -78,9 +79,11 @@
                 #moremaps-panorama-content { flex: 1; position: relative; overflow: hidden; background: #000; }
                 iframe#moremaps-pano-frame { width: 100%; height: 100%; border: none; }
                 
-                body.moremaps-panorama-active .mapboxgl-canvas { cursor: crosshair !important; }
-                body.moremaps-panorama-active .MapPointerTooltip_mapTooltip__gaOkC,
-                body.moremaps-panorama-active .mapboxgl-popup { display: none !important; }
+                body.moremaps-panorama-active #canvas,
+                body.moremaps-panorama-active canvas,
+                body.moremaps-panorama-active [class*="CoreMap_coreMap"],
+                body.moremaps-panorama-active [class*="CoreMap_coreMap"] * { cursor: crosshair !important; }
+                body.moremaps-panorama-active [class*="MapPointerTooltip"] { display: none !important; }
                 body.moremaps-panorama-active [class*="RouteBuilder_sidebar"],
                 body.moremaps-panorama-active [class*="RouteBuilderSidePanel"] {
                     pointer-events: none !important;
@@ -180,10 +183,10 @@
      * Map Marker Logic
      */
     const PanoramaMarker = {
-        create(map, lon, lat, yaw = 0) {
+        create(engine, lon, lat, yaw = 0) {
             this.remove();
             const el = document.createElement('div');
-            el.style.cssText = 'position:absolute; transform:translate(-50%, -50%); z-index:1; pointer-events:none;';
+            el.style.cssText = 'position:fixed; transform:translate(-50%, -50%); z-index:9999; pointer-events:none;';
             const deg = (yaw * 180 / Math.PI);
 
             const svgNS = "http://www.w3.org/2000/svg";
@@ -224,23 +227,32 @@
             svg.appendChild(gMain);
             el.appendChild(svg);
 
-            const container = map.getCanvasContainer ? map.getCanvasContainer() : (map.getContainer ? map.getContainer() : document.querySelector('.mapboxgl-map'));
-            if (container) container.appendChild(el);
+            // Fixed-position marker driven by the canvas's viewport rect — avoids
+            // mutating Strava's layout containers.
+            document.body.appendChild(el);
 
-            state.marker = { el, map, lon, lat, yaw, lastDeg: deg };
+            state.marker = { el, engine, lon, lat, yaw, lastDeg: deg };
             this.updatePos();
 
-            const handler = () => this.updatePos();
-            map.on('move', handler);
-            map.on('zoom', handler);
-            state.marker.handler = handler;
+            // Reposition the marker whenever the camera moves.
+            const listener = { onViewUpdated: () => this.updatePos() };
+            try { engine.addViewUpdateListener(listener); } catch (e) {}
+            state.marker.listener = listener;
         },
 
         updatePos() {
             if (!state.marker) return;
-            const pt = state.marker.map.project([state.marker.lon, state.marker.lat]);
-            state.marker.el.style.left = pt.x + 'px';
-            state.marker.el.style.top = pt.y + 'px';
+            const { engine, el, lon, lat } = state.marker;
+            let sp;
+            try { sp = engine.getCamera().getScreenPosition({ latitude: lat, longitude: lon }); } catch (e) { return; }
+            if (!sp || sp.isOccluded) { el.style.display = 'none'; return; }
+            const canvas = document.querySelector('#canvas, canvas');
+            if (!canvas) return;
+            const r = canvas.getBoundingClientRect();
+            el.style.display = '';
+            // getScreenPosition returns normalized [0..1] coords across the map viewport.
+            el.style.left = (r.left + sp.x * r.width) + 'px';
+            el.style.top = (r.top + sp.y * r.height) + 'px';
         },
 
         updateDir(yaw) {
@@ -259,8 +271,9 @@
         remove() {
             if (state.marker) {
                 state.marker.el.remove();
-                state.marker.map.off('move', state.marker.handler);
-                state.marker.map.off('zoom', state.marker.handler);
+                if (state.marker.listener) {
+                    try { state.marker.engine.removeViewUpdateListener(state.marker.listener); } catch (e) {}
+                }
                 state.marker = null;
             }
         }
@@ -351,27 +364,22 @@
      * Main Panorama Controller
      */
     const PanoramaManager = {
-        async enable(map) {
-            if (state.active && state.map === map) return;
+        async enable(engine) {
+            if (state.active && state.engine === engine) return;
             console.log('More Maps: Enabling Panorama Mode');
             state.active = true;
-            state.map = map;
+            state.engine = engine;
             document.body.classList.add('moremaps-panorama-active');
             PanoramaUI.injectStyles();
 
-            const canvas = map.getCanvas();
-            if (canvas) {
-                state.domClickBound = (e) => {
-                    if (!state.active) return;
-                    e.stopImmediatePropagation();
-                    e.preventDefault();
-                    const rect = canvas.getBoundingClientRect();
-                    const x = e.clientX - rect.left;
-                    const y = e.clientY - rect.top;
-                    const lngLat = map.unproject([x, y]);
-                    this.open(lngLat.lng, lngLat.lat);
-                };
-                canvas.addEventListener('click', state.domClickBound, true);
+            // FATMAP engine delivers taps with world coordinates directly.
+            const onTap = (ev) => {
+                if (!state.active || !ev || !ev.worldPoint) return;
+                this.open(ev.worldPoint.longitude, ev.worldPoint.latitude);
+            };
+            state.tapListener = { onMapTap: onTap, onContentTap: onTap };
+            try { engine.addOnTapListener(state.tapListener); } catch (e) {
+                console.error('More Maps: could not attach tap listener', e);
             }
             this.setupLayoutObserver();
         },
@@ -382,11 +390,10 @@
             state.active = false;
             document.body.classList.remove('moremaps-panorama-active');
 
-            const canvas = state.map ? state.map.getCanvas() : null;
-            if (canvas && state.domClickBound) {
-                canvas.removeEventListener('click', state.domClickBound, true);
-                state.domClickBound = null;
+            if (state.engine && state.tapListener) {
+                try { state.engine.removeOnTapListener(state.tapListener); } catch (e) {}
             }
+            state.tapListener = null;
         },
 
         open(lon, lat) {
@@ -430,8 +437,8 @@
             // If iframe was just created, wait a bit
             setTimeout(() => attemptPost(), 200);
 
-            if (state.active && state.map) {
-                PanoramaMarker.create(state.map, lon, lat, state.lastYaw);
+            if (state.active && state.engine) {
+                PanoramaMarker.create(state.engine, lon, lat, state.lastYaw);
             }
         },
 
@@ -488,8 +495,8 @@
         }
         else if (event.data.type === 'PANO_POS') {
             state.lastPos = { lon: event.data.lon, lat: event.data.lat };
-            if (state.active && state.map) {
-                PanoramaMarker.create(state.map, state.lastPos.lon, state.lastPos.lat, state.lastYaw);
+            if (state.active && state.engine) {
+                PanoramaMarker.create(state.engine, state.lastPos.lon, state.lastPos.lat, state.lastYaw);
             }
         }
     });
