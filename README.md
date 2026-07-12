@@ -1,6 +1,6 @@
 # <img src="icons/icon_orange.svg" width="24" height="24" alt="More Maps for Strava icon" />&ensp;More Maps for Strava
 
-A browser extension that adds additional map layers and a panorama mode to Strava's route builder.
+A browser extension that adds additional map layers and a panorama mode to Strava's maps — the global heatmap, the route builder, and activity detail pages.
 
 <p align="center">
   <a href="https://chromewebstore.google.com/detail/more-maps-for-strava/adpgjdeigiekdjnjionhhblgfpmkionl">
@@ -31,11 +31,13 @@ A browser extension that adds additional map layers and a panorama mode to Strav
 
 ### 🗺️ Additional Map Layers
 
-Enhance your route planning with map layers from multiple providers:
+Swap Strava's base map for layers from multiple providers, on the heatmap, the route builder, and activity detail pages:
 
 - **Mapy.cz** - Standard, Outdoor, Winter, and Satellite views
 - **OpenStreetMap** - Standard, CyclOSM, and Thunderforest Cycle Map
 - **Google Maps** - Standard, Satellite, Terrain, and Hybrid views
+
+On the heatmap and route builder, pick a layer from Strava's map style menu. On an activity page, choose one from the map style dropdown in the top-right corner of the map.
 
 ### 👁️ Panorama Mode
 
@@ -44,14 +46,7 @@ Click anywhere on the map to view street-level imagery:
 - **Mapy.cz Panorama** - Local coverage in Czech Republic
 - **Google Street View** - Global coverage
 
-Switch between providers with the control in the panorama window. Press **`P`** to toggle panorama mode on/off.
-
-### 🎨 Map Styling Controls
-
-Fine-tune your map appearance:
-
-- **Opacity** - Adjust the transparency of custom map layers
-- **Saturation** - Control the color saturation from grayscale to full color
+Switch between providers with the control in the panorama window, or the dropdown next to the panorama toggle button on the map. Press **`P`** to toggle panorama mode on/off.
 
 ## Installation
 
@@ -93,7 +88,7 @@ Fine-tune your map appearance:
 
 To keep this extension free, each user provides their own API keys. Providers charge per request, so the key needs to be linked to your account. The free tiers are generous — **no credit card required**, and **personal use won't cost you anything**.
 
-Click the **More Maps Settings** button in Strava's map layer menu to enter your keys.
+Click the **More Maps Settings** button in Strava's map navigation (next to "My Routes") to enter your keys.
 
 > **Privacy note**: API keys are stored exclusively in your browser's local storage and never leave your machine.
 
@@ -130,10 +125,12 @@ Switch between Mapy.cz and Google Street View:
 
 ## Usage
 
-1. Open [Strava Heatmap](https://www.strava.com/maps) or the [Route Builder](https://www.strava.com/maps/create)
-2. Click the map layer menu to see additional options
+1. Open the [Strava Heatmap](https://www.strava.com/maps), the [Route Builder](https://www.strava.com/maps/create), or any activity's detail page
+2. Choose a layer from Strava's map style menu (heatmap / route builder) or the map style dropdown (activity page)
 3. To enable panorama mode, click the eye icon or press **`P`**
 4. Click anywhere on the map to view street-level imagery
+
+> Panorama mode is available on the heatmap and route builder.
 
 ## Development
 
