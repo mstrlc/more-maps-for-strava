@@ -124,13 +124,26 @@
             const prevEngine = this.engine;
             this.engine = null;
 
-            const canvas = document.querySelector('#canvas, canvas');
-            const root = document.querySelector('[class*="CoreMap_coreMap"]') ||
-                document.querySelector('[class*="Map_map"]') || canvas;
-            if (!root) return null;
+            // /maps & route builder use CoreMap_coreMap / Map_map; the activity
+            // detail page wraps the map in #map-canvas (a fiber-less <div>) — there
+            // the fiber lives on the inner <canvas> (id="canvas"), NOT the wrapper.
+            // So gather ALL candidate roots and start from the first that actually
+            // yields a React fiber (self or parent), rather than the first that
+            // merely exists in the DOM.
+            const candidates = [
+                document.querySelector('[class*="CoreMap_coreMap"]'),
+                document.querySelector('[class*="Map_map"]'),
+                document.querySelector('#canvas'),
+                document.querySelector('canvas'),
+                document.querySelector('#map-canvas'),
+            ].filter(Boolean);
 
-            const start = this.getReactFiber(root) ||
-                (root.parentElement && this.getReactFiber(root.parentElement));
+            let start = null;
+            for (const el of candidates) {
+                start = this.getReactFiber(el) ||
+                    (el.parentElement && this.getReactFiber(el.parentElement));
+                if (start) break;
+            }
             if (!start) return null;
 
             const objSeen = new Set();
@@ -412,4 +425,6 @@
 
     const manager = new MoreMapsManager();
     manager.start();
+    // Debug handle for diagnosing issues from the console (harmless in prod).
+    window.__mmManager = manager;
 })();

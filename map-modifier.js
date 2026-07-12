@@ -334,6 +334,52 @@ function createSettingsButton() {
     myRoutes.after(item);
 }
 
+// ---------------------------------------------------------------------------
+// Activity detail page: add our providers to the native "Map Style" <select>
+// ---------------------------------------------------------------------------
+function injectIntoActivitySelect() {
+    const sel = document.querySelector('select[class*="MapTypeControl--select"]');
+    if (!sel || sel.querySelector('optgroup[data-mm]')) return;
+
+    const addGroup = (label, options) => {
+        const g = document.createElement('optgroup');
+        g.label = label;
+        g.setAttribute('data-mm', '1');
+        options.forEach(opt => {
+            const o = document.createElement('option');
+            o.value = 'mm:' + opt.id;
+            o.textContent = opt.label;
+            g.appendChild(o);
+        });
+        sel.appendChild(g);
+    };
+    addGroup('Mapy.cz', MAP_OPTIONS);
+    addGroup('OpenStreetMap', OSM_OPTIONS);
+    addGroup('Google Maps', GOOGLE_OPTIONS);
+
+    if (!sel.dataset.mmBound) {
+        sel.dataset.mmBound = '1';
+        // Capture phase: run before Strava's React onChange. For our options we
+        // stop propagation and apply the tile swap; for Strava's own options we
+        // let it switch and just drop our override.
+        sel.addEventListener('change', (ev) => {
+            const v = sel.value;
+            if (v && v.indexOf('mm:') === 0) {
+                ev.stopImmediatePropagation();
+                triggerMapSwitch(v.slice(3));
+            } else {
+                clearToStrava();
+            }
+        }, true);
+    }
+
+    // Reflect an already-active custom provider in the select.
+    if (activeMapId !== 'strava-default') {
+        const val = 'mm:' + activeMapId;
+        if ([...sel.options].some(o => o.value === val)) sel.value = val;
+    }
+}
+
 function onPanoramaClick() {
     const newState = !isPanoramaActive;
     if (newState) {
@@ -474,6 +520,7 @@ const observer = new MutationObserver(() => {
     if (menu) injectIntoMenu(menu);
     createPanoramaButton();
     createSettingsButton();
+    injectIntoActivitySelect();
 });
 
 function init() {
@@ -483,6 +530,7 @@ function init() {
     if (menu) injectIntoMenu(menu);
     createPanoramaButton();
     createSettingsButton();
+    injectIntoActivitySelect();
 
     document.addEventListener('keydown', (e) => {
         if (e.key !== 'p' && e.key !== 'P') return;
