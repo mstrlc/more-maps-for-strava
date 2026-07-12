@@ -1,26 +1,25 @@
-Enhance Strava's route builder and heatmap with map layers from Mapy.cz, OpenStreetMap, and Google Maps. Click anywhere on the map to view street-level panoramas from Mapy.cz or Google Street View. Customize map layer opacity and saturation to your liking.
+Enhance Strava's maps with layers from Mapy.cz, OpenStreetMap, and Google Maps — on the global heatmap, the route builder, and activity detail pages. Click anywhere on the map to view street-level panoramas from Mapy.cz or Google Street View.
 
 
 🗺️ MAP LAYERS
+
+Swap Strava's base map for a layer from any of these providers:
 
 - Mapy.cz — Standard, Outdoor, Winter, Satellite
 - OpenStreetMap — Standard, CyclOSM, Cycle Map (Thunderforest)
 - Google Maps — Standard, Satellite, Terrain, Hybrid
 
+On the heatmap and route builder, pick a layer from Strava's map style menu. On an activity page, choose one from the map style dropdown above the map.
+
 
 👁️ PANORAMA MODE
 
-Click anywhere on the map to open a draggable, resizable panorama window with street-level imagery. Switch between Mapy.cz and Google Street View using the control in the panorama window. Press P to toggle panorama mode on/off.
-
-
-🎨 MAP STYLING
-
-Adjust the opacity and saturation of any custom map layer — from full color to grayscale, fully opaque to transparent.
+On the heatmap and route builder, click anywhere on the map to open a draggable, resizable panorama window with street-level imagery. Switch between Mapy.cz and Google Street View using the control in the panorama window. Press P to toggle panorama mode on/off.
 
 
 ⚙️ SETUP
 
-Some features require a free API key. Click the "More Maps Settings" button in Strava's map layer menu to enter your keys. The extension will prompt you automatically the first time you use a feature that needs one. No credit card required. Free tiers cover all personal use.
+Some features require a free API key. Click the "More Maps Settings" button in Strava's map navigation (next to "My Routes") to enter your keys. The extension will prompt you automatically the first time you use a feature that needs one. No credit card required. Free tiers cover all personal use.
 
 🔑 Keys are stored exclusively in your browser's local storage and never leave your device.
 
