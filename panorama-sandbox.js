@@ -8,7 +8,27 @@ const state = {
 
 const isFirefox = navigator.userAgent.includes('Firefox');
 const container = document.getElementById('pano-container');
-const embedFrame = document.getElementById('pano-embed');
+// The embed frame is created on demand and removed when unused. It must never be
+// renavigated: this page is sandboxed, so the frame's origin is an opaque origin
+// derived from the extension, and navigating it (e.g. src = '') trips a browser
+// process origin-lock CHECK in Chrome and takes the whole browser down.
+let embedFrame = null;
+
+function removeEmbedFrame() {
+    if (!embedFrame) return;
+    embedFrame.remove();
+    embedFrame = null;
+}
+
+function showEmbedFrame(src) {
+    removeEmbedFrame();
+    embedFrame = document.createElement('iframe');
+    embedFrame.id = 'pano-embed';
+    embedFrame.setAttribute('allowfullscreen', '');
+    embedFrame.style.cssText = 'width:100%;height:100%;border:none;position:absolute;top:0;left:0;';
+    embedFrame.src = src;
+    document.body.appendChild(embedFrame);
+}
 
 window.addEventListener('message', async (event) => {
     const data = event.data;
@@ -50,8 +70,7 @@ async function openPanorama(provider, apiKey, lon, lat, yaw) {
     try {
         container.innerHTML = '';
         container.style.display = 'block';
-        embedFrame.style.display = 'none';
-        embedFrame.src = '';
+        removeEmbedFrame();
         state.pano = null;
 
         if (provider === 'google') {
@@ -87,8 +106,7 @@ function renderGoogleEmbed(lon, lat, yaw) {
     const heading = Math.round(yaw * 180 / Math.PI);
     const src = `https://www.google.com/maps/embed/v1/streetview?key=${state.apiKey}&location=${lat},${lon}&heading=${heading}&fov=90&pitch=0`;
     container.style.display = 'none';
-    embedFrame.style.display = 'block';
-    embedFrame.src = src;
+    showEmbedFrame(src);
 }
 
 function renderGoogle(lon, lat, yaw) {
