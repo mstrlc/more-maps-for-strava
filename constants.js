@@ -39,6 +39,7 @@ var MoreMapsConfig = {
         SATURATION_MAPBOX: 'moremaps_saturation_mapbox',
         SATURATION_SLIDER: 'moremaps_saturation_slider',
         ACTIVE_ID: 'moremaps_active_id',
+        COLLAPSED_SECTIONS: 'moremaps_collapsed_sections',
         PANO_PROVIDER: 'moremaps_pano_provider',
         GOOGLE_SESSION_ROADMAP: 'moremaps_google_session_roadmap',
         GOOGLE_SESSION_SATELLITE: 'moremaps_google_session_satellite',

@@ -32,7 +32,7 @@
     boot();
 }
 
-const { MAP_OPTIONS, OSM_OPTIONS, GOOGLE_OPTIONS, STORAGE_KEYS, STRINGS } = MoreMapsConfig;
+const { MAP_OPTIONS, OSM_OPTIONS, GOOGLE_OPTIONS, STORAGE_KEYS, STRINGS, SELECTORS } = MoreMapsConfig;
 
 const ORANGE = '#fc4c02';
 // Always start at strava-default: on page load the engine shows Strava's own
@@ -41,6 +41,14 @@ const ORANGE = '#fc4c02';
 let activeMapId = 'strava-default';
 let isPanoramaActive = false;
 let panoramaButtonEl = null;
+
+// Our provider sections, in the order they're injected. Used by both the
+// route-planner popover and the activity-page <select>.
+const OUR_SECTIONS = [
+    { title: 'Mapy.cz', options: MAP_OPTIONS },
+    { title: 'OpenStreetMap', options: OSM_OPTIONS },
+    { title: 'Google Maps', options: GOOGLE_OPTIONS }
+];
 
 // Detected native class names (cloned from Strava's own buttons for a native look).
 const native = {
@@ -170,6 +178,52 @@ function createOptionButton(opt) {
     return btn;
 }
 
+// ---------------------------------------------------------------------------
+// Collapsed section state (issue #1: 11 options made the popover overflow)
+// ---------------------------------------------------------------------------
+let collapsedSections = null;
+
+function collapsedSet() {
+    if (collapsedSections) return collapsedSections;
+    let stored = null;
+    try {
+        const raw = JSON.parse(localStorage.getItem(STORAGE_KEYS.COLLAPSED_SECTIONS));
+        if (Array.isArray(raw)) stored = raw;
+    } catch (e) { /* corrupt value — fall back to the default */ }
+    // Default: everything collapsed except the section holding the active map
+    // (on a fresh load that's strava-default, so all three start collapsed).
+    if (!stored) {
+        stored = OUR_SECTIONS
+            .filter(s => !s.options.some(o => o.id === activeMapId))
+            .map(s => s.title);
+    }
+    collapsedSections = new Set(stored);
+    return collapsedSections;
+}
+
+function setSectionCollapsed(title, collapsed) {
+    const set = collapsedSet();
+    if (collapsed) set.add(title); else set.delete(title);
+    localStorage.setItem(STORAGE_KEYS.COLLAPSED_SECTIONS, JSON.stringify([...set]));
+}
+
+function createChevron() {
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('viewBox', '0 0 24 24');
+    svg.setAttribute('width', '14');
+    svg.setAttribute('height', '14');
+    svg.setAttribute('fill', 'none');
+    svg.setAttribute('stroke', 'currentColor');
+    svg.setAttribute('stroke-width', '3');
+    svg.setAttribute('stroke-linecap', 'round');
+    svg.setAttribute('stroke-linejoin', 'round');
+    svg.style.cssText = 'flex:none; opacity:0.6; transition:transform 120ms ease;';
+    const poly = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
+    poly.setAttribute('points', '6 9 12 15 18 9');
+    svg.appendChild(poly);
+    return svg;
+}
+
 function createSection(title, options) {
     const section = document.createElement('div');
     section.className = native.section;
@@ -177,19 +231,99 @@ function createSection(title, options) {
 
     const header = document.createElement('div');
     header.className = native.header;
+    header.style.cssText = 'display:flex; align-items:center;';
     const heading = document.createElement('span');
     if (native.heading) heading.className = native.heading;
     heading.textContent = title;
-    header.appendChild(heading);
+    const chevron = createChevron();
+    // Hit area hugs the label + chevron rather than the full header row, so a
+    // stray click next to the title doesn't collapse the section.
+    const hit = document.createElement('span');
+    hit.style.cssText = 'display:inline-flex; align-items:center; gap:6px; cursor:pointer; user-select:none;';
+    hit.setAttribute('role', 'button');
+    hit.tabIndex = 0;
+    hit.appendChild(heading);
+    hit.appendChild(chevron);
+    header.appendChild(hit);
 
     const grid = document.createElement('div');
     grid.className = native.optionsGrid;
     options.forEach(opt => grid.appendChild(createOptionButton(opt)));
 
+    let collapsed = collapsedSet().has(title);
+    const render = () => {
+        grid.style.display = collapsed ? 'none' : '';
+        chevron.style.transform = collapsed ? 'rotate(-90deg)' : '';
+        hit.setAttribute('aria-expanded', String(!collapsed));
+    };
+    const toggle = () => {
+        collapsed = !collapsed;
+        setSectionCollapsed(title, collapsed);
+        render();
+        refitOpenMenu();
+    };
+    render();
+    hit.addEventListener('click', toggle);
+    hit.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); }
+    });
+
     section.appendChild(header);
     section.appendChild(grid);
     return section;
 }
+
+// Cap the popover to the free space inside the map: from the edge it is
+// anchored to, up to the map's opposite edge, while staying clear of Strava's
+// own map overlays (the search/filter row and the zoom + location controls).
+// Called on injection, on resize, and whenever a section is toggled.
+const MENU_GAP = 12;
+const MENU_MIN_HEIGHT = 180;
+// Probe height: small enough that the popover always sits at its natural
+// placement, so its anchored edge isn't distorted by Strava's own clamping.
+const MENU_PROBE_HEIGHT = 120;
+
+// The vertical band of the map the popover may occupy.
+function safeMapBand(menu) {
+    const mapEl = document.querySelector(SELECTORS.MAP_CONTAINER);
+    const map = mapEl
+        ? mapEl.getBoundingClientRect()
+        : { top: 0, bottom: window.innerHeight, height: window.innerHeight };
+    let top = map.top;
+    document.querySelectorAll('[class*="MapNav_"], [class*="ControlButton_container"]').forEach(el => {
+        if (menu.contains(el)) return;
+        const r = el.getBoundingClientRect();
+        // Only the small overlays sitting in the map's upper half push us down.
+        if (!r.height || r.height > map.height / 3) return;
+        if (r.top > map.top + map.height / 2) return;
+        if (r.bottom > top) top = r.bottom;
+    });
+    return {
+        top: Math.min(top + MENU_GAP, map.bottom),
+        bottom: map.bottom - MENU_GAP
+    };
+}
+
+function fitMenuToMap(menu) {
+    menu.style.overflowY = 'auto';
+    menu.style.overscrollBehavior = 'contain';
+
+    const band = safeMapBand(menu);
+    // Measure at the probe height first: a tall popover gets shifted around by
+    // Strava's positioning, which would hide where it's actually anchored.
+    menu.style.maxHeight = MENU_PROBE_HEIGHT + 'px';
+    const r = menu.getBoundingClientRect();
+    const bottomAnchored = Math.abs(band.bottom - r.bottom) <= Math.abs(r.top - band.top);
+    const available = bottomAnchored ? r.bottom - band.top : band.bottom - r.top;
+    menu.style.maxHeight = Math.max(MENU_MIN_HEIGHT, Math.round(available)) + 'px';
+}
+
+function refitOpenMenu() {
+    const menu = document.querySelector(`[class*="MapPreferences_menuContainer"]`);
+    if (menu && menu.querySelector('[data-mm-section]')) fitMenuToMap(menu);
+}
+
+window.addEventListener('resize', refitOpenMenu);
 
 function injectIntoMenu(menu) {
     if (menu.querySelector('[data-mm-section]')) return; // already injected
@@ -218,10 +352,14 @@ function injectIntoMenu(menu) {
     const firstSection = menu.querySelector(`[class*="MapPreferences_section"]`);
     const anchor = firstSection ? firstSection.nextSibling : null;
     const frag = document.createDocumentFragment();
-    frag.appendChild(createSection('Mapy.cz', MAP_OPTIONS));
-    frag.appendChild(createSection('OpenStreetMap', OSM_OPTIONS));
-    frag.appendChild(createSection('Google Maps', GOOGLE_OPTIONS));
+    OUR_SECTIONS.forEach(s => frag.appendChild(createSection(s.title, s.options)));
     menu.insertBefore(frag, anchor);
+
+    // Our sections make the popover taller than Strava ever designed for, so
+    // cap it to the map area and let it scroll (issue #1). Re-fit on the next
+    // frame too: at mount time Strava hasn't finished positioning the popover.
+    fitMenuToMap(menu);
+    requestAnimationFrame(() => { if (menu.isConnected) fitMenuToMap(menu); });
 
     // When a custom provider is active, Strava still marks its own (unchanged)
     // style button as selected — clear it so only our button is outlined.
@@ -353,9 +491,7 @@ function injectIntoActivitySelect() {
         });
         sel.appendChild(g);
     };
-    addGroup('Mapy.cz', MAP_OPTIONS);
-    addGroup('OpenStreetMap', OSM_OPTIONS);
-    addGroup('Google Maps', GOOGLE_OPTIONS);
+    OUR_SECTIONS.forEach(s => addGroup(s.title, s.options));
 
     if (!sel.dataset.mmBound) {
         sel.dataset.mmBound = '1';
