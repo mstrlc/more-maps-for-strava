@@ -50,18 +50,62 @@ const OUR_SECTIONS = [
     { title: 'Google Maps', options: GOOGLE_OPTIONS }
 ];
 
+// Strava ships two generations of this popover (the 2026-09 redesign moved the
+// option markup into its own `MapPreferenceOption_*` module and wrapped the
+// sections in a scroll area). Match both, by substring — the hashes change with
+// every build anyway.
+const OPTION_BUTTON_SEL = '[class*="MapPreferenceOption_thumbnailButton"], [class*="MapPreferences_optionButton"]';
+const SECTION_SEL = '[class*="MapPreferences_section"]';
+// The section holding Strava's own base maps ("Map Styles" pre-2026-09).
+const BASE_SECTION_RE = /^\s*(Map Types|Map Styles)\s*$/i;
+
 // Detected native class names (cloned from Strava's own buttons for a native look).
 const native = {
-    optionButton: 'MapPreferences_optionButton',
-    imageContainer: 'MapPreferences_imageContainer',
-    image: 'MapPreferences_option',
+    optionButtonSel: OPTION_BUTTON_SEL,
+    optionButton: 'MapPreferenceOption_thumbnailButton',
+    imageContainer: 'MapPreferenceOption_imageContainer',
+    image: 'MapPreferenceOption_thumbnail',
     label: '',
-    selected: 'MapPreferences_selected',
+    labelSelected: '',
+    selected: 'MapPreferenceOption_selected',
     section: 'MapPreferences_section',
-    header: 'MapPreferences_header',
+    header: 'MapPreferenceSectionHeader_header',
     heading: '',
     optionsGrid: 'MapPreferences_options'
 };
+
+// Selection is spread over the button (outline) and its label (bold + orange).
+function setOptionSelected(btn, selected) {
+    btn.classList.toggle(native.selected, selected);
+    if (!native.labelSelected) return;
+    const label = btn.querySelector('[class*="_label"]');
+    if (label) native.labelSelected.split(/\s+/).filter(Boolean)
+        .forEach(c => label.classList.toggle(c, selected));
+}
+
+// Strava's own base maps live in one section; the other sections (Heatmaps,
+// Layers, Terrain) are independent toggles that must keep their selection.
+function baseSection(menu) {
+    return Array.from(menu.querySelectorAll(SECTION_SEL))
+        .find(s => BASE_SECTION_RE.test(headerText(s))) || null;
+}
+
+function headerText(section) {
+    const header = findSectionHeader(section);
+    return header ? (header.textContent || '') : '';
+}
+
+// Every button that takes part in base-map selection: Strava's own, plus ours.
+function baseOptionButtons(menu) {
+    const roots = Array.from(menu.querySelectorAll('[data-mm-section]'));
+    const strava = baseSection(menu);
+    if (strava) roots.unshift(strava);
+    return roots.flatMap(r => Array.from(r.querySelectorAll(native.optionButtonSel)));
+}
+
+function clearBaseSelection(menu) {
+    baseOptionButtons(menu).forEach(b => setOptionSelected(b, false));
+}
 
 // ---------------------------------------------------------------------------
 // Messages from the page context
@@ -113,30 +157,62 @@ function clearToStrava() {
 // Native popover injection (Strava's "Change map style" menu)
 // ---------------------------------------------------------------------------
 function detectNativeClasses(menu) {
-    const btn = menu.querySelector(`[class*="${native.optionButton}"]`);
+    const buttons = Array.from(menu.querySelectorAll(OPTION_BUTTON_SEL));
+    const btn = buttons[0];
     if (btn) {
-        native.optionButton = firstClassContaining(btn, 'optionButton') || native.optionButton;
-        const sel = Array.from(btn.classList).find(c => /selected/i.test(c));
-        if (sel) native.selected = sel;
+        native.optionButton = firstClassContaining(btn, 'thumbnailButton')
+            || firstClassContaining(btn, 'optionButton')
+            || native.optionButton;
+        native.optionButtonSel = `[class*="${native.optionButton}"]`;
         const imgWrap = btn.querySelector(`[class*="imageContainer"]`);
-        if (imgWrap) native.imageContainer = firstClassContaining(imgWrap, 'imageContainer') || native.imageContainer;
+        if (imgWrap) native.imageContainer = classListString(imgWrap) || native.imageContainer;
         const img = btn.querySelector('img');
         if (img && img.className) native.image = img.className;
-        const label = btn.querySelector(`[class*="_label"]`);
-        if (label && label.className) native.label = label.className;
+
+        // Selection styling sits on both the button and its label, and only
+        // exists on a currently-selected option — which isn't necessarily the
+        // first one. Take the base label classes from an unselected option so
+        // we don't bake the selected look into every option we create, then
+        // derive the selected-only extras by diffing the two.
+        const isSel = b => Array.from(b.classList).some(isSelectedClass);
+        const selBtn = buttons.find(isSel);
+        const plain = buttons.find(b => !isSel(b));
+        const plainLabel = (plain || btn).querySelector('[class*="_label"]');
+        if (plainLabel && plainLabel.className) native.label = classListString(plainLabel);
+        if (selBtn) {
+            native.selected = Array.from(selBtn.classList).find(isSelectedClass);
+            const selLabel = selBtn.querySelector('[class*="_label"]');
+            if (selLabel && plainLabel) {
+                const base = new Set(plainLabel.classList);
+                native.labelSelected = Array.from(selLabel.classList).filter(c => !base.has(c)).join(' ');
+            }
+        }
     }
     const grid = menu.querySelector(`[class*="${native.optionsGrid}"]`);
     if (grid) native.optionsGrid = classListString(grid);
-    const section = menu.querySelector(`[class*="${native.section}"]`);
+    const section = menu.querySelector(SECTION_SEL);
     if (section) {
         native.section = classListString(section);
-        const header = section.querySelector(`[class*="${native.header}"]`);
+        const header = findSectionHeader(section);
         if (header) {
             native.header = classListString(header);
             const span = header.querySelector('span, div');
             if (span && span.className) native.heading = span.className;
         }
     }
+}
+
+// `selected` on the option button itself — never the label's `selectedLabel`.
+function isSelectedClass(c) {
+    return /selected/i.test(c) && !/label/i.test(c);
+}
+
+// Post-2026-09 the header is its own module (`MapPreferenceSectionHeader_header`);
+// before that it was `MapPreferences_header`. Either way it's the section's own
+// header child — and never the popover's `MapPreferences_panelHeader` title row.
+function findSectionHeader(section) {
+    return Array.from(section.children)
+        .find(el => /header/i.test(classListString(el)) && !/panelHeader/i.test(classListString(el))) || null;
 }
 
 function firstClassContaining(el, substr) {
@@ -150,7 +226,6 @@ function createOptionButton(opt) {
     const btn = document.createElement('button');
     btn.className = native.optionButton;
     btn.dataset.mmMapId = opt.id;
-    if (activeMapId === opt.id) btn.classList.add(native.selected);
 
     const imgWrap = document.createElement('div');
     imgWrap.className = native.imageContainer;
@@ -167,12 +242,13 @@ function createOptionButton(opt) {
 
     btn.appendChild(imgWrap);
     btn.appendChild(label);
+    if (activeMapId === opt.id) setOptionSelected(btn, true);
 
     btn.addEventListener('click', () => {
         // Exclusive selection across the whole menu (native + ours).
         const menu = btn.closest(`[class*="MapPreferences_menuContainer"]`) || document;
-        menu.querySelectorAll(`[class*="${native.optionButton}"]`).forEach(b => b.classList.remove(native.selected));
-        btn.classList.add(native.selected);
+        clearBaseSelection(menu);
+        setOptionSelected(btn, true);
         triggerMapSwitch(opt.id);
     });
     return btn;
@@ -305,8 +381,18 @@ function safeMapBand(menu) {
 }
 
 function fitMenuToMap(menu) {
-    menu.style.overflowY = 'auto';
-    menu.style.overscrollBehavior = 'contain';
+    // Since the 2026-09 redesign the popover has its own scroll area under a
+    // sticky title row; then we only cap the outer height and let Strava's
+    // scroller do the scrolling. Older builds scroll the container itself.
+    const scrollArea = menu.querySelector('[class*="MapPreferences_scrollArea"]');
+    if (scrollArea) {
+        scrollArea.style.minHeight = '0';
+        scrollArea.style.overflowY = 'auto';
+        scrollArea.style.overscrollBehavior = 'contain';
+    } else {
+        menu.style.overflowY = 'auto';
+        menu.style.overscrollBehavior = 'contain';
+    }
 
     const band = safeMapBand(menu);
     // Measure at the probe height first: a tall popover gets shifted around by
@@ -329,31 +415,33 @@ function injectIntoMenu(menu) {
     if (menu.querySelector('[data-mm-section]')) return; // already injected
     detectNativeClasses(menu);
 
-    // Attach reset behaviour to Strava's own "Map Styles" buttons only (not the
-    // "Layers" overlays, which shouldn't clear our base map).
-    let mapStylesSection = null;
-    menu.querySelectorAll(`[class*="MapPreferences_section"]`).forEach(s => {
-        if (/Map Styles/i.test(s.textContent || '')) mapStylesSection = s;
-    });
-    const nativeStyleBtns = (mapStylesSection || menu).querySelectorAll(`[class*="${native.optionButton}"]`);
+    // Attach reset behaviour to Strava's own base-map buttons only (not the
+    // Heatmaps/Layers/Terrain overlays, which shouldn't clear our base map).
+    const stravaBase = baseSection(menu);
+    const nativeStyleBtns = (stravaBase || menu).querySelectorAll(native.optionButtonSel);
     nativeStyleBtns.forEach(btn => {
         if (btn.dataset.mmMapId || btn.dataset.mmReset) return;
         btn.dataset.mmReset = '1';
         btn.addEventListener('click', () => {
             // Make the clicked native style the sole selected button (React won't
             // re-mark it when re-clicking the already-active style).
-            menu.querySelectorAll(`[class*="${native.optionButton}"]`).forEach(b => b.classList.remove(native.selected));
-            btn.classList.add(native.selected);
+            clearBaseSelection(menu);
+            setOptionSelected(btn, true);
             clearToStrava();
         });
     });
 
-    // Insert our sections after the first (Map Styles) section.
-    const firstSection = menu.querySelector(`[class*="MapPreferences_section"]`);
-    const anchor = firstSection ? firstSection.nextSibling : null;
-    const frag = document.createDocumentFragment();
-    OUR_SECTIONS.forEach(s => frag.appendChild(createSection(s.title, s.options)));
-    menu.insertBefore(frag, anchor);
+    // Insert our sections after Strava's base-map section. Since the 2026-09
+    // redesign the sections sit inside a scroll area rather than directly in
+    // the menu container, so insert relative to the section, not the menu.
+    const anchorSection = stravaBase || menu.querySelector(SECTION_SEL);
+    const sections = OUR_SECTIONS.map(s => createSection(s.title, s.options));
+    if (anchorSection) {
+        anchorSection.after(...sections);
+    } else {
+        const scrollArea = menu.querySelector('[class*="MapPreferences_scrollArea"]') || menu;
+        sections.forEach(s => scrollArea.appendChild(s));
+    }
 
     // Our sections make the popover taller than Strava ever designed for, so
     // cap it to the map area and let it scroll (issue #1). Re-fit on the next
@@ -364,8 +452,8 @@ function injectIntoMenu(menu) {
     // When a custom provider is active, Strava still marks its own (unchanged)
     // style button as selected — clear it so only our button is outlined.
     if (activeMapId !== 'strava-default') {
-        menu.querySelectorAll(`[class*="${native.optionButton}"]`).forEach(b => {
-            if (!b.dataset.mmMapId) b.classList.remove(native.selected);
+        baseOptionButtons(menu).forEach(b => {
+            if (!b.dataset.mmMapId) setOptionSelected(b, false);
         });
     }
 }
@@ -373,17 +461,28 @@ function injectIntoMenu(menu) {
 // ---------------------------------------------------------------------------
 // Panorama toggle + provider switcher, placed under "Find my location"
 // ---------------------------------------------------------------------------
-function createPanoramaButton() {
+// Find a native map control to sit next to and clone the styling from. Strava
+// moves these around between redesigns, so anchor on the generic
+// `ControlButton_*` markup and only prefer "find my location" when it's there.
+function findControlAnchor() {
     const findMe = document.querySelector('[class*="MapViewControls_findMe"]');
-    if (!findMe) return;
-    const findMeBtn = findMe.closest('[class*="ControlButton_controlButton"]');
-    const findMeGroup = findMe.closest('[class*="ControlButton_controlGroup"]');
-    const column = findMe.closest('[class*="ControlButton_container"]');
-    if (!findMeBtn || !column) return;
-    // The top-left region is a flex row; append our group as a second column to
-    // the right of the native controls (location + zoom), top-aligned.
-    const topLeft = column.parentElement;
-    if (!topLeft) return;
+    const btn = (findMe && findMe.closest('[class*="ControlButton_controlButton"]'))
+        || document.querySelector(`${SELECTORS.UI_CONTROLS_TOP_LEFT} [class*="ControlButton_controlButton"]`)
+        || document.querySelector('[class*="ControlButton_controlButton"]');
+    if (!btn) return null;
+    const group = btn.closest('[class*="ControlButton_controlGroup"]');
+    // The column stacks the native groups; our group goes beside that column,
+    // not inside it — a wider child would stretch the native buttons.
+    const column = btn.closest('[class*="ControlButton_container"]') || group || btn;
+    const region = column.parentElement;
+    if (!region) return null;
+    return { btn, group, region };
+}
+
+function createPanoramaButton() {
+    const anchor = findControlAnchor();
+    if (!anchor) return;
+    const { btn: findMeBtn, group: findMeGroup, region: topLeft } = anchor;
 
     if (document.getElementById('strava-panorama-control')) return;
 
@@ -397,7 +496,11 @@ function createPanoramaButton() {
     // original layout, blending with Strava's controls.
     const group = document.createElement('div');
     group.dataset.mmPanoGroup = '1';
-    group.style.cssText = `align-self:flex-start; margin-left:10px; height:${h}px; display:flex; flex-direction:row; align-items:stretch; overflow:hidden; background:#fff; border-radius:${radius}; box-shadow:${shadow};`;
+    // Beside the native controls when they're laid out in a row, below them
+    // when they're stacked.
+    const stacked = /column/.test(getComputedStyle(topLeft).flexDirection);
+    const offset = stacked ? 'margin-top:10px' : 'margin-left:10px';
+    group.style.cssText = `align-self:flex-start; ${offset}; height:${h}px; display:flex; flex-direction:row; align-items:stretch; overflow:hidden; background:#fff; border-radius:${radius}; box-shadow:${shadow};`;
 
     const btn = document.createElement('button');
     btn.id = 'strava-panorama-control';
