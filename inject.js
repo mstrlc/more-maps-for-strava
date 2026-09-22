@@ -71,6 +71,35 @@
         }
     };
 
+    // On load, poll for the engine this often (instead of every 2s) for this
+    // long, so a favorite map replaces Strava's own map before it's visible.
+    const FAST_POLL_INTERVAL_MS = 100;
+    const FAST_POLL_DURATION_MS = 20000;
+    // While a favorite map is loading the canvas stays hidden, so Strava's own
+    // map doesn't flash first. Reveal shortly after the swap (the engine needs
+    // a moment to fetch the new tiles), or after a timeout as a safety net.
+    const REVEAL_DELAY_MS = 300;
+    const COVER_TIMEOUT_MS = 8000;
+    // A freshly created engine isn't initialised yet: switching its map type
+    // right away can break it (white canvas until reload). Wait until it has
+    // registered its tile sources, then let Strava's own startup settle.
+    const READY_POLL_MS = 100;
+    const READY_MAX_ATTEMPTS = 50;
+    const ENGINE_SETTLE_MS = 500;
+
+    // Background tabs (e.g. middle-click from the dashboard) pause rendering
+    // and throttle timers, so the engine doesn't finish initialising until the
+    // tab is shown. Driving it before that leaves it stuck on a white canvas.
+    const whenVisible = (fn) => {
+        if (!document.hidden) { fn(); return; }
+        const onChange = () => {
+            if (document.hidden) return;
+            document.removeEventListener('visibilitychange', onChange);
+            fn();
+        };
+        document.addEventListener('visibilitychange', onChange);
+    };
+
     /**
      * Drives Strava's FATMAP (CoreMap) engine to swap base tiles and run panorama.
      */
@@ -78,16 +107,62 @@
         constructor() {
             this.engine = null;
             this.poller = null;
-            this.currentMapType = 'strava-default';
+            // Start on the user's favorite map (if any); findEngine applies it as
+            // soon as the engine is captured.
+            this.currentMapType = MoreMapsConfig.getFavoriteMap();
             this.savedCarrierUrl = null;   // Strava's original carrier template
             this.viewListener = null;      // re-assert listener while a custom map is active
             this.desiredUrl = null;        // provider URL we expect the carrier to hold
+            this.coverObserver = null;     // hides the canvas until the favorite is applied
+            this.pendingApply = null;      // engine we're waiting on before applying
         }
 
         start() {
             window.addEventListener('message', this.handleMessage.bind(this));
+            if (this.currentMapType !== 'strava-default') this.coverMap();
             this.poller = setInterval(() => this.findEngine(), 2000);
-            this.findEngine();
+            this.fastPoll();
+        }
+
+        // The regular 2s poll could leave Strava's own map on screen for up to
+        // 2s before the favorite kicks in. Poll quickly until the engine appears.
+        fastPoll() {
+            if (document.hidden) { whenVisible(() => this.fastPoll()); return; }
+            const t0 = Date.now();
+            const tick = () => {
+                if (this.findEngine()) return;
+                if (Date.now() - t0 > FAST_POLL_DURATION_MS) { this.uncoverMap(0); return; }
+                setTimeout(tick, FAST_POLL_INTERVAL_MS);
+            };
+            tick();
+        }
+
+        // Hide the map canvas as soon as it's created, until uncoverMap().
+        coverMap() {
+            const hide = () => {
+                const c = document.querySelector('#canvas');
+                if (c && !c.dataset.mmCovered) {
+                    c.dataset.mmCovered = '1';
+                    c.style.opacity = '0';
+                }
+            };
+            this.coverObserver = new MutationObserver(hide);
+            this.coverObserver.observe(document.documentElement, { childList: true, subtree: true });
+            hide();
+            whenVisible(() => setTimeout(() => this.uncoverMap(0), COVER_TIMEOUT_MS));
+        }
+
+        uncoverMap(delay) {
+            if (!this.coverObserver) return;
+            this.coverObserver.disconnect();
+            this.coverObserver = null;
+            setTimeout(() => {
+                document.querySelectorAll('canvas[data-mm-covered]').forEach(c => {
+                    c.style.transition = 'opacity 150ms ease';
+                    c.style.opacity = '';
+                    delete c.dataset.mmCovered;
+                });
+            }, delay);
         }
 
         // --- Engine discovery (React Fiber) ---
@@ -200,11 +275,41 @@
                 if (this.engine !== prevEngine) {
                     console.log('%cMore Maps: FATMAP engine CAPTURED', 'color: green', this.engine);
                     if (this.currentMapType !== 'strava-default') {
-                        this.applyMapStyle(this.currentMapType);
+                        this.applyWhenReady(this.engine);
                     }
                 }
             }
             return this.engine;
+        }
+
+        engineReady(engine) {
+            try {
+                const list = JSON.parse(JSON.stringify(engine.getTileSources().getTileSources()));
+                return Array.isArray(list) && list.length > 0;
+            } catch (e) {
+                return false;
+            }
+        }
+
+        // Apply the current (favorite / pre-remount) map once a new engine is
+        // initialised. A user action in the meantime cancels this.
+        applyWhenReady(engine) {
+            this.pendingApply = engine;
+            let attempts = 0;
+            const check = () => {
+                if (this.pendingApply !== engine || this.engine !== engine) return;
+                if (!this.engineReady(engine) && ++attempts < READY_MAX_ATTEMPTS) {
+                    setTimeout(check, READY_POLL_MS);
+                    return;
+                }
+                setTimeout(() => {
+                    if (this.pendingApply !== engine || this.engine !== engine) return;
+                    this.pendingApply = null;
+                    if (this.currentMapType !== 'strava-default') this.applyMapStyle(this.currentMapType);
+                    else this.uncoverMap(0);
+                }, ENGINE_SETTLE_MS);
+            };
+            whenVisible(check);
         }
 
         // --- Message handling ---
@@ -212,6 +317,11 @@
         handleMessage(event) {
             if (event.source !== window || !event.data) return;
             const data = event.data;
+
+            if (data.type === 'MOREMAPS_MAP_SWITCH' || data.type === 'MOREMAPS_MAP_CLEAR') {
+                this.pendingApply = null;
+                this.uncoverMap(0);
+            }
 
             if (data.type === 'MOREMAPS_MAP_SWITCH') {
                 this.currentMapType = data.mapType;
@@ -292,6 +402,7 @@
 
                 try { this.engine.getDebugApi().clearCache(); } catch (e) {}
                 try { this.engine.requestRender(); } catch (e) {}
+                this.uncoverMap(REVEAL_DELAY_MS);
 
                 // Safety net: re-assert the override shortly after activation, in
                 // case switching the map type let the carrier's default tiles (the

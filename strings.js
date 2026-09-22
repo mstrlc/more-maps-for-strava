@@ -17,7 +17,10 @@ if (typeof MoreMapsConfig !== 'undefined') {
             STYLING_HEADER: 'Map Styling',
             STYLING_EXPLAINER: 'Only applies to custom layers.',
             OPACITY_LABEL: 'Opacity',
-            SATURATION_LABEL: 'Saturation'
+            SATURATION_LABEL: 'Saturation',
+            FAVORITE_ADD: 'Set as favorite map',
+            FAVORITE_REMOVE: 'Remove favorite map',
+            FAVORITE_UNAVAILABLE: 'Pick a More Maps layer to set it as your favorite'
         },
         PANORAMA: {
             LOADING: 'Loading Panorama...',
@@ -43,6 +46,9 @@ if (typeof MoreMapsConfig !== 'undefined') {
             GET_KEY: 'Get free key (~1 min)',
             GET_KEY_GOOGLE: 'Get free key (~3 min)',
             TRY_PROVIDER_PREFIX: 'Try ',
+            FAVORITE_LABEL: 'Favorite map',
+            FAVORITE_EXPLAINER: 'Shown automatically whenever you open a Strava map. You can also set it with the star on a map in the map style menu, or next to the map dropdown on an activity page.',
+            FAVORITE_STRAVA: "Strava's own map",
             API_LINKS: {
                 MAPY: 'https://developer.mapy.com/account/projects',
                 GOOGLE: 'https://console.cloud.google.com/google/maps-apis/credentials',

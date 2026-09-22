@@ -39,6 +39,7 @@ var MoreMapsConfig = {
         SATURATION_MAPBOX: 'moremaps_saturation_mapbox',
         SATURATION_SLIDER: 'moremaps_saturation_slider',
         ACTIVE_ID: 'moremaps_active_id',
+        FAVORITE_ID: 'moremaps_favorite_id',
         COLLAPSED_SECTIONS: 'moremaps_collapsed_sections',
         PANO_PROVIDER: 'moremaps_pano_provider',
         GOOGLE_SESSION_ROADMAP: 'moremaps_google_session_roadmap',
@@ -46,4 +47,25 @@ var MoreMapsConfig = {
         GOOGLE_SESSION_TERRAIN: 'moremaps_google_session_terrain',
         GOOGLE_SESSION_HYBRID: 'moremaps_google_session_hybrid'
     }
+};
+
+// Storage key holding the API key a map needs, or null if it needs none.
+MoreMapsConfig.requiredKeyFor = function (mapId) {
+    const { STORAGE_KEYS } = MoreMapsConfig;
+    if (mapId.startsWith('mapycz-')) return STORAGE_KEYS.MAPY_KEY;
+    if (mapId === 'osm-cycle') return STORAGE_KEYS.TF_KEY;
+    return null;
+};
+
+// The map to show on page load: the user's favorite, provided it still exists
+// and its API key is set (otherwise the carrier would render blank tiles).
+MoreMapsConfig.getFavoriteMap = function () {
+    const { STORAGE_KEYS, MAP_OPTIONS, OSM_OPTIONS, GOOGLE_OPTIONS } = MoreMapsConfig;
+    const id = localStorage.getItem(STORAGE_KEYS.FAVORITE_ID);
+    if (!id || ![...MAP_OPTIONS, ...OSM_OPTIONS, ...GOOGLE_OPTIONS].some(o => o.id === id)) {
+        return 'strava-default';
+    }
+    const key = MoreMapsConfig.requiredKeyFor(id);
+    if (key && !localStorage.getItem(key)) return 'strava-default';
+    return id;
 };

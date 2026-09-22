@@ -35,10 +35,10 @@
 const { MAP_OPTIONS, OSM_OPTIONS, GOOGLE_OPTIONS, STORAGE_KEYS, STRINGS, SELECTORS } = MoreMapsConfig;
 
 const ORANGE = '#fc4c02';
-// Always start at strava-default: on page load the engine shows Strava's own
-// map (we don't re-apply across reloads), so pre-selecting a persisted custom
-// provider would wrongly outline two buttons.
-let activeMapId = 'strava-default';
+// Start at the favorite map: inject.js applies it on page load. Without one,
+// the engine shows Strava's own map (the last-used map isn't re-applied across
+// reloads), so pre-selecting it would wrongly outline two buttons.
+let activeMapId = MoreMapsConfig.getFavoriteMap();
 let isPanoramaActive = false;
 let panoramaButtonEl = null;
 
@@ -133,10 +133,9 @@ function updatePanoramaUI(active) {
 // Map switching
 // ---------------------------------------------------------------------------
 function triggerMapSwitch(mapId) {
-    if (mapId.startsWith('mapycz-') && !localStorage.getItem(STORAGE_KEYS.MAPY_KEY)) {
-        showSettingsModal(true, STORAGE_KEYS.MAPY_KEY);
-    } else if (mapId === 'osm-cycle' && !localStorage.getItem(STORAGE_KEYS.TF_KEY)) {
-        showSettingsModal(true, STORAGE_KEYS.TF_KEY);
+    const requiredKey = MoreMapsConfig.requiredKeyFor(mapId);
+    if (requiredKey && !localStorage.getItem(requiredKey)) {
+        showSettingsModal(true, requiredKey);
     }
     activeMapId = mapId;
     localStorage.setItem(STORAGE_KEYS.ACTIVE_ID, mapId);
@@ -151,6 +150,83 @@ function clearToStrava() {
     activeMapId = 'strava-default';
     localStorage.setItem(STORAGE_KEYS.ACTIVE_ID, 'strava-default');
     window.postMessage({ type: 'MOREMAPS_MAP_CLEAR' }, '*');
+}
+
+// ---------------------------------------------------------------------------
+// Favorite map (applied by inject.js on page load)
+// ---------------------------------------------------------------------------
+// Only our own maps can be the favorite: forcing one of Strava's map types on
+// load would mean calling setMapType ourselves, which crashes Firefox's WASM.
+let favoriteMapId = localStorage.getItem(STORAGE_KEYS.FAVORITE_ID) || null;
+
+function setFavorite(mapId) {
+    favoriteMapId = mapId || null;
+    if (favoriteMapId) localStorage.setItem(STORAGE_KEYS.FAVORITE_ID, favoriteMapId);
+    else localStorage.removeItem(STORAGE_KEYS.FAVORITE_ID);
+    document.querySelectorAll('[data-mm-star]').forEach(renderStar);
+    refreshActivityFavorite();
+    const fav = document.getElementById('moremaps-favorite-map');
+    if (fav) fav.value = favoriteMapId || '';
+}
+
+function toggleFavorite(mapId) {
+    setFavorite(favoriteMapId === mapId ? null : mapId);
+}
+
+function createStarIcon(size) {
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('viewBox', '0 0 24 24');
+    svg.setAttribute('width', String(size));
+    svg.setAttribute('height', String(size));
+    svg.setAttribute('stroke', 'currentColor');
+    // ~1.25px lines at 16px, like Strava's own icons.
+    svg.setAttribute('stroke-width', size >= 16 ? '1.9' : '2.5');
+    svg.setAttribute('stroke-linejoin', 'round');
+    svg.setAttribute('aria-hidden', 'true');
+    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    path.setAttribute('d', 'M12 2.5l2.9 6.1 6.6.8-4.9 4.6 1.3 6.6L12 17.3l-5.9 3.3 1.3-6.6-4.9-4.6 6.6-.8z');
+    svg.appendChild(path);
+    return svg;
+}
+
+// Star badge in the corner of a popover thumbnail. It's a span, not a button:
+// the thumbnail itself is already a <button>. Styled inline rather than via a
+// <style> tag so the page's CSP can't strip it; hover is tracked by the parent
+// option button (dataset.mmHover).
+function createFavoriteStar(mapId) {
+    const star = document.createElement('span');
+    star.dataset.mmStar = mapId;
+    star.setAttribute('role', 'button');
+    star.tabIndex = 0;
+    star.style.cssText = 'position:absolute; top:3px; right:3px; width:20px; height:20px; display:flex; align-items:center; justify-content:center; border-radius:50%; cursor:pointer; transition:opacity 120ms ease; box-shadow:0 1px 2px rgba(0,0,0,0.3);';
+    star.appendChild(createStarIcon(12));
+    const onToggle = (e) => {
+        // Don't let the click reach the option button (that would switch maps).
+        e.preventDefault();
+        e.stopPropagation();
+        toggleFavorite(mapId);
+    };
+    star.addEventListener('click', onToggle);
+    star.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') onToggle(e);
+    });
+    star.addEventListener('focus', () => renderStar(star));
+    star.addEventListener('blur', () => renderStar(star));
+    renderStar(star);
+    return star;
+}
+
+function renderStar(star) {
+    const fav = star.dataset.mmStar === favoriteMapId;
+    const btn = star.closest('[data-mm-map-id]');
+    const visible = fav || document.activeElement === star || (btn && btn.dataset.mmHover === '1');
+    star.style.opacity = visible ? '1' : '0';
+    star.style.background = fav ? '#fff' : 'rgba(0,0,0,0.5)';
+    star.style.color = fav ? ORANGE : '#fff';
+    star.querySelector('svg').setAttribute('fill', fav ? 'currentColor' : 'none');
+    star.title = fav ? STRINGS.UI.FAVORITE_REMOVE : STRINGS.UI.FAVORITE_ADD;
+    star.setAttribute('aria-label', star.title);
+    star.setAttribute('aria-pressed', String(fav));
 }
 
 // ---------------------------------------------------------------------------
@@ -235,6 +311,12 @@ function createOptionButton(opt) {
     img.src = browser.runtime.getURL(opt.img);
     img.style.objectFit = 'cover';
     imgWrap.appendChild(img);
+    imgWrap.style.position = 'relative';
+    const star = createFavoriteStar(opt.id);
+    imgWrap.appendChild(star);
+    const setHover = (on) => { btn.dataset.mmHover = on ? '1' : ''; renderStar(star); };
+    btn.addEventListener('mouseenter', () => setHover(true));
+    btn.addEventListener('mouseleave', () => setHover(false));
 
     const label = document.createElement('div');
     if (native.label) label.className = native.label;
@@ -580,7 +662,11 @@ function createSettingsButton() {
 // ---------------------------------------------------------------------------
 function injectIntoActivitySelect() {
     const sel = document.querySelector('select[class*="MapTypeControl--select"]');
-    if (!sel || sel.querySelector('optgroup[data-mm]')) return;
+    if (!sel) return;
+    // React may re-render the select's surroundings, so re-check the star
+    // button on every pass, not only on first injection.
+    ensureActivityFavoriteButton(sel);
+    if (sel.querySelector('optgroup[data-mm]')) return;
 
     const addGroup = (label, options) => {
         const g = document.createElement('optgroup');
@@ -589,6 +675,7 @@ function injectIntoActivitySelect() {
         options.forEach(opt => {
             const o = document.createElement('option');
             o.value = 'mm:' + opt.id;
+            o.dataset.mmLabel = opt.label;
             o.textContent = opt.label;
             g.appendChild(o);
         });
@@ -609,6 +696,7 @@ function injectIntoActivitySelect() {
             } else {
                 clearToStrava();
             }
+            refreshActivityFavorite();
         }, true);
     }
 
@@ -617,6 +705,53 @@ function injectIntoActivitySelect() {
         const val = 'mm:' + activeMapId;
         if ([...sel.options].some(o => o.value === val)) sel.value = val;
     }
+    refreshActivityFavorite();
+}
+
+// A <select> can't hold a star per option, so the activity page gets a star
+// toggle next to the dropdown, acting on the currently selected map. It sits
+// in the map's top-right control row beside "Create Route" / "GPX", and clones
+// the icon-only fullscreen button's classes to look native.
+function ensureActivityFavoriteButton(sel) {
+    if (document.getElementById('moremaps-activity-favorite')) return;
+    const native = document.querySelector('[data-testid="fullscreen-toggle-button"]')
+        || document.querySelector('[data-testid="gpx-download-button"]');
+    const btn = document.createElement('button');
+    btn.id = 'moremaps-activity-favorite';
+    btn.type = 'button';
+    btn.className = native ? native.className : '';
+    if (!native) {
+        btn.style.cssText = 'display:inline-flex; align-items:center; justify-content:center; width:29px; height:29px; padding:0; background:#fff; border:none; border-radius:4px;';
+    }
+    btn.appendChild(createStarIcon(16));
+    btn.addEventListener('click', () => {
+        const v = sel.value;
+        if (v && v.indexOf('mm:') === 0) toggleFavorite(v.slice(3));
+    });
+    (sel.closest('[class*="MapTypeControl--mapTypeControl"]') || sel).after(btn);
+    refreshActivityFavorite();
+}
+
+function refreshActivityFavorite() {
+    const sel = document.querySelector('select[class*="MapTypeControl--select"]');
+    if (!sel) return;
+    sel.querySelectorAll('optgroup[data-mm] option').forEach(o => {
+        const text = (o.value.slice(3) === favoriteMapId ? '★ ' : '') + o.dataset.mmLabel;
+        if (o.textContent !== text) o.textContent = text;
+    });
+    const btn = document.getElementById('moremaps-activity-favorite');
+    if (!btn) return;
+    const current = sel.value && sel.value.indexOf('mm:') === 0 ? sel.value.slice(3) : null;
+    const fav = current !== null && current === favoriteMapId;
+    btn.disabled = current === null;
+    btn.style.opacity = current === null ? '0.4' : '1';
+    btn.style.cursor = current === null ? 'default' : '';
+    btn.style.color = fav ? ORANGE : '';
+    btn.querySelector('svg').setAttribute('fill', fav ? 'currentColor' : 'none');
+    btn.title = current === null ? STRINGS.UI.FAVORITE_UNAVAILABLE
+        : fav ? STRINGS.UI.FAVORITE_REMOVE : STRINGS.UI.FAVORITE_ADD;
+    btn.setAttribute('aria-label', btn.title);
+    btn.setAttribute('aria-pressed', String(fav));
 }
 
 function onPanoramaClick() {
@@ -643,6 +778,9 @@ function showSettingsModal(showInstructions = false, highlightKey = null) {
     const modal = document.getElementById('moremaps-settings-modal');
     if (!modal) return;
     modal.style.display = 'flex';
+    const fav = document.getElementById('moremaps-favorite-map');
+    if (fav) fav.value = favoriteMapId || '';
+    if (fav && fav.selectedIndex < 0) fav.value = '';
     if (showInstructions) {
         const instr = document.getElementById('moremaps-api-instructions');
         if (instr) instr.style.display = 'block';
@@ -712,6 +850,33 @@ function injectSettingsModal() {
     const google = makeField(STRINGS.SETTINGS.GOOGLE_LABEL, STORAGE_KEYS.GOOGLE_KEY, STRINGS.SETTINGS.GOOGLE_PLACEHOLDER, createApiLink(STRINGS.SETTINGS.API_LINKS.GOOGLE, STRINGS.SETTINGS.GET_KEY_GOOGLE));
     const tf = makeField(STRINGS.SETTINGS.TF_LABEL, STORAGE_KEYS.TF_KEY, STRINGS.SETTINGS.TF_PLACEHOLDER, createApiLink(STRINGS.SETTINGS.API_LINKS.TF));
 
+    // Favorite map: applied automatically whenever a Strava map loads.
+    const favLabel = document.createElement('label');
+    favLabel.htmlFor = 'moremaps-favorite-map';
+    favLabel.style.cssText = 'display:block; margin:8px 0 4px; font-weight:600; text-align:left; font-size:13px; color:#333;';
+    favLabel.textContent = STRINGS.SETTINGS.FAVORITE_LABEL;
+    const favExplainer = document.createElement('p');
+    favExplainer.style.cssText = 'font-size:12px; color:#666; margin:0 0 8px 0; line-height:1.5;';
+    favExplainer.textContent = STRINGS.SETTINGS.FAVORITE_EXPLAINER;
+    const favSelect = document.createElement('select');
+    favSelect.id = 'moremaps-favorite-map';
+    favSelect.style.cssText = 'width:100%; padding:10px 12px; border:1px solid #ddd; border-radius:6px; margin-bottom:16px; font-size:13px; background:white; color:#333; box-sizing:border-box; cursor:pointer;';
+    const stravaOpt = document.createElement('option');
+    stravaOpt.value = '';
+    stravaOpt.textContent = STRINGS.SETTINGS.FAVORITE_STRAVA;
+    favSelect.appendChild(stravaOpt);
+    OUR_SECTIONS.forEach(s => {
+        const g = document.createElement('optgroup');
+        g.label = s.title;
+        s.options.forEach(opt => {
+            const o = document.createElement('option');
+            o.value = opt.id;
+            o.textContent = `${s.title} ${opt.label}`;
+            g.appendChild(o);
+        });
+        favSelect.appendChild(g);
+    });
+
     const storageInfo = document.createElement('div');
     storageInfo.style.cssText = 'font-size:11px; color:#888; margin-bottom:24px; text-align:left;';
     storageInfo.textContent = STRINGS.UI.API_KEYS_NOTICE;
@@ -723,6 +888,7 @@ function injectSettingsModal() {
         localStorage.setItem(STORAGE_KEYS.MAPY_KEY, mapy.input.value.trim());
         localStorage.setItem(STORAGE_KEYS.GOOGLE_KEY, google.input.value.trim());
         localStorage.setItem(STORAGE_KEYS.TF_KEY, tf.input.value.trim());
+        setFavorite(favSelect.value);
         modal.style.display = 'none';
         window.postMessage({ type: 'MOREMAPS_API_KEY_UPDATED' }, '*');
     };
@@ -744,6 +910,7 @@ function injectSettingsModal() {
     content.appendChild(mapy.label); content.appendChild(mapy.input);
     content.appendChild(google.label); content.appendChild(google.input);
     content.appendChild(tf.label); content.appendChild(tf.input);
+    content.appendChild(favLabel); content.appendChild(favExplainer); content.appendChild(favSelect);
     content.appendChild(storageInfo); content.appendChild(saveBtn); content.appendChild(resetBtn);
     modal.appendChild(content);
     modal.addEventListener('click', (e) => { if (e.target === modal) modal.style.display = 'none'; });
