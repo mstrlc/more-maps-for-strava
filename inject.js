@@ -20,17 +20,6 @@
     // Default template Strava ships (fallback for restore if we can't read it live).
     const CARRIER_DEFAULT_URL = '{STRAVA_TILE_SERVER_URL}/winter-imagery/{quadkey}.png?groupId={groupId}';
 
-    // Map the ?style= URL param to a FATMAP MapType enum value. Use the plain
-    // (non-EXPERIMENT) types: the EXPERIMENT variants (5-9) render blank in some
-    // browsers (e.g. Firefox), whereas 0-4 render reliably (our carrier is 2).
-    const STYLE_TO_MAPTYPE = {
-        standard: 0, // STRAVA_PLANET_TOPO_LIGHT
-        dark: 1,     // STRAVA_PLANET_TOPO_DARK
-        winter: 2,   // STRAVA_PLANET_TOPO_WINTER_HYBRID
-        hybrid: 3,   // STRAVA_PLANET_HYBRID
-        satellite: 4 // STRAVA_PLANET_SATELLITE_SUMMER
-    };
-
     /**
      * Provider tile sources. Each resolves to a single {z}/{x}/{y} raster template.
      * The FATMAP engine substitutes {x}/{y}/{z} just like Mapbox raster sources.
@@ -86,6 +75,13 @@
     const READY_POLL_MS = 100;
     const READY_MAX_ATTEMPTS = 50;
     const ENGINE_SETTLE_MS = 500;
+    // Repointing the carrier's tile template or clearing the tile cache while
+    // tiles are in flight corrupts the engine's memory ("memory access out of
+    // bounds" in the render loop): the map freezes until reload. Strava never
+    // does either, so we only do them once tile loading has been quiet for a
+    // moment — which in practice is a few hundred ms.
+    const IDLE_QUIET_MS = 100;
+    const IDLE_POLL_MS = 50;
 
     // Background tabs (e.g. middle-click from the dashboard) pause rendering
     // and throttle timers, so the engine doesn't finish initialising until the
@@ -111,8 +107,13 @@
             // soon as the engine is captured.
             this.currentMapType = MoreMapsConfig.getFavoriteMap();
             this.savedCarrierUrl = null;   // Strava's original carrier template
-            this.viewListener = null;      // re-assert listener while a custom map is active
             this.desiredUrl = null;        // provider URL we expect the carrier to hold
+            this.carrierActive = false;    // is the engine on the carrier map type?
+            this.cachedUrl = null;         // provider whose tiles the carrier cache may hold
+            this.tilesLoading = false;     // from the engine's tile-loading listener
+            this.lastTileEvent = 0;
+            this.idleQueue = [];           // engine calls waiting for tile loading to settle
+            this.idleTimer = null;
             this.coverObserver = null;     // hides the canvas until the favorite is applied
             this.pendingApply = null;      // engine we're waiting on before applying
         }
@@ -274,12 +275,54 @@
                 // is why toggling panorama used to flash a full reload.
                 if (this.engine !== prevEngine) {
                     console.log('%cMore Maps: FATMAP engine CAPTURED', 'color: green', this.engine);
+                    this.attachEngine(this.engine);
                     if (this.currentMapType !== 'strava-default') {
                         this.applyWhenReady(this.engine);
                     }
                 }
             }
             return this.engine;
+        }
+
+        // Fresh engine: nothing of ours in its cache, and it's on whatever map
+        // type Strava started it with (the carrier only if that's Winter).
+        attachEngine(engine) {
+            this.carrierActive = this.stravaStyle() === 'winter';
+            this.cachedUrl = null;
+            this.tilesLoading = false;
+            this.lastTileEvent = Date.now();
+            this.idleQueue = [];
+            try {
+                engine.addTileLoadingListener({
+                    onTilesLoadingStarted: () => { this.tilesLoading = true; this.lastTileEvent = Date.now(); },
+                    onTilesLoaded: () => { this.tilesLoading = false; this.lastTileEvent = Date.now(); }
+                });
+            } catch (e) {}
+        }
+
+        stravaStyle() {
+            return new URLSearchParams(location.search).get('style') || 'standard';
+        }
+
+        // Run fn once tile loading has settled (see IDLE_QUIET_MS). Dropped if
+        // the engine is replaced in the meantime.
+        whenTilesIdle(fn) {
+            const engine = this.engine;
+            this.idleQueue.push(() => { if (this.engine === engine) fn(); });
+            if (this.idleTimer) return;
+            this.idleTimer = setInterval(() => {
+                if (this.tilesLoading || Date.now() - this.lastTileEvent < IDLE_QUIET_MS) return;
+                clearInterval(this.idleTimer);
+                this.idleTimer = null;
+                const queue = this.idleQueue;
+                this.idleQueue = [];
+                queue.forEach(f => { try { f(); } catch (e) { console.error('More Maps:', e); } });
+            }, IDLE_POLL_MS);
+        }
+
+        clearTileCache() {
+            try { this.engine.getDebugApi().clearCache(); } catch (e) {}
+            try { this.engine.requestRender(); } catch (e) {}
         }
 
         engineReady(engine) {
@@ -330,7 +373,7 @@
             } else if (data.type === 'MOREMAPS_MAP_CLEAR') {
                 // Strava's native style button does the map-type switch itself.
                 // We only clean up passively — NO setMapType (crashes Firefox's
-                // WASM), NO clearCache/requestRender (would fight Strava's switch).
+                // WASM), and tile changes wait until Strava's switch has loaded.
                 this.currentMapType = 'strava-default';
                 this.findEngine(true);
                 this.softClear();
@@ -370,19 +413,10 @@
 
         applyMapStyle(mapType) {
             if (!this.isEngine(this.engine)) return;
-
-            if (mapType === 'strava-default') {
-                this.restore();
-                return;
-            }
-
             const url = this.resolveUrl(mapType);
             if (!url) return;
 
             try {
-                // Activate the raster carrier map type (registers the carrier source).
-                this.engine.setMapType(CARRIER_MAP_TYPE);
-
                 const tsApi = this.getTileSourcesApi();
                 if (!tsApi) return;
 
@@ -392,7 +426,6 @@
                 }
 
                 console.log('More Maps: switching base tiles to', mapType);
-                tsApi.setTileSourceTemplateUrl(CARRIER_SOURCE, url);
                 this.desiredUrl = url;
 
                 // Hide Strava's own labels/POI so they don't double up with the
@@ -400,115 +433,53 @@
                 // removed — setIsTerrain3dEnabled freezes the engine's next render.)
                 try { this.engine.setEnableScreenSymbols(false); } catch (e) {}
 
-                try { this.engine.getDebugApi().clearCache(); } catch (e) {}
-                try { this.engine.requestRender(); } catch (e) {}
-                this.uncoverMap(REVEAL_DELAY_MS);
-
-                // Safety net: re-assert the override shortly after activation, in
-                // case switching the map type let the carrier's default tiles (the
-                // "winter" base) win the initial render race.
-                setTimeout(() => {
-                    if (this.desiredUrl !== url || !this.isEngine(this.engine)) return;
-                    try {
-                        const ts = this.getTileSourcesApi();
-                        if (ts && this.readCarrierUrl(ts) !== url) {
-                            ts.setTileSourceTemplateUrl(CARRIER_SOURCE, url);
-                            this.engine.getDebugApi().clearCache();
-                            this.engine.requestRender();
-                        }
-                    } catch (e) {}
-                }, 400);
+                // Everything else waits until tile loading has settled, e.g. from
+                // a Strava style switch the user just made.
+                this.whenTilesIdle(() => {
+                    if (this.desiredUrl !== url) return; // superseded meanwhile
+                    const ts = this.getTileSourcesApi();
+                    if (!ts) return;
+                    if (this.readCarrierUrl(ts) !== url) {
+                        // Template first, so the carrier never shows Strava's winter tiles.
+                        ts.setTileSourceTemplateUrl(CARRIER_SOURCE, url);
+                    }
+                    if (!this.carrierActive) {
+                        this.engine.setMapType(CARRIER_MAP_TYPE);
+                        this.carrierActive = true;
+                    }
+                    // The cache is keyed by source, not URL: another provider's
+                    // tiles would linger if the reset's cache clear didn't run.
+                    if (this.cachedUrl && this.cachedUrl !== url) this.clearTileCache();
+                    this.cachedUrl = url;
+                    this.uncoverMap(REVEAL_DELAY_MS);
+                });
             } catch (e) {
                 console.error('More Maps: error applying tiles', e);
             }
         }
 
-        // Passive cleanup when the user clicks a native Strava style button.
-        // Strava's own handler switches the map type; we just re-enable labels and
-        // restore the carrier's original tile template. No setMapType (Firefox WASM
-        // crash) and no clearCache/requestRender (would fight Strava's switch).
+        // Cleanup when the user clicks a native Strava style button. Strava's own
+        // handler switches the map type (we must not: setMapType crashes Firefox's
+        // WASM). Once its tiles have loaded, restore the carrier's original
+        // template and drop our tiles from the cache, so the next custom map
+        // starts clean.
         softClear() {
             this.desiredUrl = null;
+            this.carrierActive = false;
             if (!this.isEngine(this.engine)) return;
             try { this.engine.setEnableScreenSymbols(true); } catch (e) {}
-            try {
+            this.whenTilesIdle(() => {
+                if (this.desiredUrl !== null) return; // back on a custom map already
+                this.carrierActive = this.stravaStyle() === 'winter';
                 const tsApi = this.getTileSourcesApi();
                 if (tsApi && this.savedCarrierUrl) {
                     tsApi.setTileSourceTemplateUrl(CARRIER_SOURCE, this.savedCarrierUrl);
                 }
-            } catch (e) {}
-        }
-
-        // Drop our override, restoring Strava's original carrier tiles, without
-        // touching the map type (Strava's own click handler sets it).
-        clearOverride() {
-            this.removeReassert();
-            this.desiredUrl = null;
-            if (!this.isEngine(this.engine)) return;
-            try { this.engine.setEnableScreenSymbols(true); } catch (e) {}
-            try {
-                const tsApi = this.getTileSourcesApi();
-                if (tsApi && this.savedCarrierUrl) {
-                    tsApi.setTileSourceTemplateUrl(CARRIER_SOURCE, this.savedCarrierUrl);
-                    try { this.engine.getDebugApi().clearCache(); } catch (e) {}
-                    try { this.engine.requestRender(); } catch (e) {}
+                if (this.cachedUrl) {
+                    this.cachedUrl = null;
+                    this.clearTileCache();
                 }
-            } catch (e) {
-                console.error('More Maps: error clearing override', e);
-            }
-        }
-
-        restore() {
-            this.removeReassert();
-            this.desiredUrl = null;
-            if (!this.isEngine(this.engine)) return;
-            try { this.engine.setEnableScreenSymbols(true); } catch (e) {}
-            try {
-                const tsApi = this.getTileSourcesApi();
-                if (tsApi && this.savedCarrierUrl) {
-                    tsApi.setTileSourceTemplateUrl(CARRIER_SOURCE, this.savedCarrierUrl);
-                }
-                // Restore the map type Strava had (best-effort from the URL ?style=).
-                const style = new URLSearchParams(location.search).get('style') || 'standard';
-                const mt = STYLE_TO_MAPTYPE[style] != null ? STYLE_TO_MAPTYPE[style] : 0;
-                this.engine.setMapType(mt);
-                try { this.engine.getDebugApi().clearCache(); } catch (e) {}
-                try { this.engine.requestRender(); } catch (e) {}
-            } catch (e) {
-                console.error('More Maps: error restoring', e);
-            }
-        }
-
-        /**
-         * Strava's React layer owns the map type and can re-assert it (e.g. after a
-         * soft navigation). A lightweight view-update listener re-applies our carrier
-         * override if it detects the template drifting back to Strava's.
-         */
-        installReassert() {
-            if (this.viewListener || !this.isEngine(this.engine)) return;
-            const self = this;
-            this.viewListener = {
-                onViewUpdated: () => {
-                    if (!self.desiredUrl || !self.isEngine(self.engine)) return;
-                    try {
-                        const tsApi = self.getTileSourcesApi();
-                        if (!tsApi) return;
-                        const cur = self.readCarrierUrl(tsApi);
-                        if (cur !== self.desiredUrl) {
-                            self.engine.setMapType(CARRIER_MAP_TYPE);
-                            tsApi.setTileSourceTemplateUrl(CARRIER_SOURCE, self.desiredUrl);
-                        }
-                    } catch (e) {}
-                }
-            };
-            try { this.engine.addViewUpdateListener(this.viewListener); } catch (e) { this.viewListener = null; }
-        }
-
-        removeReassert() {
-            if (this.viewListener && this.isEngine(this.engine)) {
-                try { this.engine.removeViewUpdateListener(this.viewListener); } catch (e) {}
-            }
-            this.viewListener = null;
+            });
         }
 
         // --- Panorama ---
