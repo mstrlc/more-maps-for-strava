@@ -388,7 +388,9 @@ function createChevron() {
     return svg;
 }
 
-function createSection(title, options) {
+// A popover section whose header toggles the visibility of `content`. The
+// collapsed state is remembered per title.
+function createCollapsibleSection(title, content) {
     const section = document.createElement('div');
     section.className = native.section;
     section.dataset.mmSection = title;
@@ -410,13 +412,9 @@ function createSection(title, options) {
     hit.appendChild(chevron);
     header.appendChild(hit);
 
-    const grid = document.createElement('div');
-    grid.className = native.optionsGrid;
-    options.forEach(opt => grid.appendChild(createOptionButton(opt)));
-
     let collapsed = collapsedSet().has(title);
     const render = () => {
-        grid.style.display = collapsed ? 'none' : '';
+        content.forEach(el => { el.style.display = collapsed ? 'none' : ''; });
         chevron.style.transform = collapsed ? 'rotate(-90deg)' : '';
         hit.setAttribute('aria-expanded', String(!collapsed));
     };
@@ -433,8 +431,15 @@ function createSection(title, options) {
     });
 
     section.appendChild(header);
-    section.appendChild(grid);
-    return section;
+    content.forEach(el => section.appendChild(el));
+    return { section, header };
+}
+
+function createSection(title, options) {
+    const grid = document.createElement('div');
+    grid.className = native.optionsGrid;
+    options.forEach(opt => grid.appendChild(createOptionButton(opt)));
+    return createCollapsibleSection(title, [grid]).section;
 }
 
 // Cap the popover to the free space inside the map: from the edge it is
