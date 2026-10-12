@@ -185,6 +185,12 @@ function createStarIcon(size) {
     svg.setAttribute('aria-hidden', 'true');
     const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
     path.setAttribute('d', 'M12 2.5l2.9 6.1 6.6.8-4.9 4.6 1.3 6.6L12 17.3l-5.9 3.3 1.3-6.6-4.9-4.6 6.6-.8z');
+    // Inline styles, not attributes: Strava's button CSS sets svg fills, and a
+    // stylesheet rule beats a presentation attribute. The path inherits from
+    // the svg, whose fill renderStar/refreshActivityFavorite set.
+    svg.style.stroke = 'currentColor';
+    path.style.fill = 'inherit';
+    path.style.stroke = 'inherit';
     svg.appendChild(path);
     return svg;
 }
@@ -223,7 +229,7 @@ function renderStar(star) {
     star.style.opacity = visible ? '1' : '0';
     star.style.background = fav ? '#fff' : 'rgba(0,0,0,0.5)';
     star.style.color = fav ? ORANGE : '#fff';
-    star.querySelector('svg').setAttribute('fill', fav ? 'currentColor' : 'none');
+    star.querySelector('svg').style.fill = fav ? 'currentColor' : 'none';
     star.title = fav ? STRINGS.UI.FAVORITE_REMOVE : STRINGS.UI.FAVORITE_ADD;
     star.setAttribute('aria-label', star.title);
     star.setAttribute('aria-pressed', String(fav));
@@ -747,7 +753,7 @@ function refreshActivityFavorite() {
     btn.style.opacity = current === null ? '0.4' : '1';
     btn.style.cursor = current === null ? 'default' : '';
     btn.style.color = fav ? ORANGE : '';
-    btn.querySelector('svg').setAttribute('fill', fav ? 'currentColor' : 'none');
+    btn.querySelector('svg').style.fill = fav ? 'currentColor' : 'none';
     btn.title = current === null ? STRINGS.UI.FAVORITE_UNAVAILABLE
         : fav ? STRINGS.UI.FAVORITE_REMOVE : STRINGS.UI.FAVORITE_ADD;
     btn.setAttribute('aria-label', btn.title);
