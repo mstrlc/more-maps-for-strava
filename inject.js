@@ -83,8 +83,11 @@
     const IDLE_QUIET_MS = 100;
     const IDLE_POLL_MS = 50;
     // We only hear about loads that start after our listener is attached, so a
-    // new engine counts as loading until its first tile event — or until it has
-    // been silent this long, meaning nothing was in flight after all.
+    // new engine counts as loading until its first tile event.
+    // That listener only reports edges, and a freshly captured engine is
+    // usually mid-load: it can stay silent for 10s+ and then send a lone
+    // 'loaded'. Silence alone isn't idleness, so until the first event we also
+    // require the engine's tile requests to have been quiet this long.
     const UNKNOWN_STATE_IDLE_MS = 3000;
     // Last resort so a load that never reports back can't block switching forever.
     const STUCK_LOADING_IDLE_MS = 15000;
@@ -244,6 +247,10 @@
         return URL.createObjectURL(blob);
     }
 
+    // The engine's tile requests (arraybuffer XHRs) as the engine sees them:
+    // from its send() — before any recolouring delay — until loadend.
+    const tileRequests = { inFlight: 0, lastActivity: 0 };
+
     // filterFor(url) returns the filter to apply to that request, or null to
     // let it through untouched.
     function installTileInterceptor(filterFor) {
@@ -266,6 +273,14 @@
             return abort.apply(this, arguments);
         };
         proto.send = function (body) {
+            if (this.responseType === 'arraybuffer') {
+                tileRequests.inFlight++;
+                tileRequests.lastActivity = Date.now();
+                this.addEventListener('loadend', () => {
+                    tileRequests.inFlight = Math.max(0, tileRequests.inFlight - 1);
+                    tileRequests.lastActivity = Date.now();
+                }, { once: true });
+            }
             const mm = this._mm;
             const url = mm && String(mm.args[1]);
             const filter = mm && filterFor(url);
@@ -524,7 +539,7 @@
                     onTilesLoaded: () => onEvent(false)
                 });
             } catch (e) {
-                this.tilesLoading = false; // no signal at all: fall back to the quiet period
+                this.tilesLoading = false; // no events: tilesIdle falls back to the quiet period
             }
         }
 
@@ -549,9 +564,24 @@
         }
 
         tilesIdle() {
-            const silent = Date.now() - this.lastTileEvent;
-            if (!this.tilesLoading) return silent >= IDLE_QUIET_MS;
-            return silent >= (this.tileStateKnown ? STUCK_LOADING_IDLE_MS : UNKNOWN_STATE_IDLE_MS);
+            const now = Date.now();
+            const silent = now - this.lastTileEvent;
+            if (silent >= STUCK_LOADING_IDLE_MS) return true;
+            if (this.tileStateKnown) return !this.tilesLoading && silent >= IDLE_QUIET_MS;
+            // State unknown (see UNKNOWN_STATE_IDLE_MS): no events, no tile
+            // requests and no terrain downloads for a while.
+            return silent >= UNKNOWN_STATE_IDLE_MS &&
+                tileRequests.inFlight === 0 &&
+                now - tileRequests.lastActivity >= UNKNOWN_STATE_IDLE_MS &&
+                !this.terrainDownloading();
+        }
+
+        terrainDownloading() {
+            try {
+                return !!JSON.parse(this.engine.getDebugApi().dumpEngineState()).terrain.areTilesBeingDownloaded;
+            } catch (e) {
+                return false;
+            }
         }
 
         clearTileCache() {
