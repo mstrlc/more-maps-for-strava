@@ -82,6 +82,12 @@
     // moment — which in practice is a few hundred ms.
     const IDLE_QUIET_MS = 100;
     const IDLE_POLL_MS = 50;
+    // We only hear about loads that start after our listener is attached, so a
+    // new engine counts as loading until its first tile event — or until it has
+    // been silent this long, meaning nothing was in flight after all.
+    const UNKNOWN_STATE_IDLE_MS = 3000;
+    // Last resort so a load that never reports back can't block switching forever.
+    const STUCK_LOADING_IDLE_MS = 15000;
 
     // Background tabs (e.g. middle-click from the dashboard) pause rendering
     // and throttle timers, so the engine doesn't finish initialising until the
@@ -111,6 +117,7 @@
             this.carrierActive = false;    // is the engine on the carrier map type?
             this.cachedUrl = null;         // provider whose tiles the carrier cache may hold
             this.tilesLoading = false;     // from the engine's tile-loading listener
+            this.tileStateKnown = false;   // seen a tile event since attaching?
             this.lastTileEvent = 0;
             this.idleQueue = [];           // engine calls waiting for tile loading to settle
             this.idleTimer = null;
@@ -289,15 +296,24 @@
         attachEngine(engine) {
             this.carrierActive = this.stravaStyle() === 'winter';
             this.cachedUrl = null;
-            this.tilesLoading = false;
+            this.tilesLoading = true; // until told otherwise, see UNKNOWN_STATE_IDLE_MS
+            this.tileStateKnown = false;
             this.lastTileEvent = Date.now();
             this.idleQueue = [];
+            const onEvent = (loading) => {
+                if (this.engine !== engine) return;
+                this.tilesLoading = loading;
+                this.tileStateKnown = true;
+                this.lastTileEvent = Date.now();
+            };
             try {
                 engine.addTileLoadingListener({
-                    onTilesLoadingStarted: () => { this.tilesLoading = true; this.lastTileEvent = Date.now(); },
-                    onTilesLoaded: () => { this.tilesLoading = false; this.lastTileEvent = Date.now(); }
+                    onTilesLoadingStarted: () => onEvent(true),
+                    onTilesLoaded: () => onEvent(false)
                 });
-            } catch (e) {}
+            } catch (e) {
+                this.tilesLoading = false; // no signal at all: fall back to the quiet period
+            }
         }
 
         stravaStyle() {
@@ -311,13 +327,19 @@
             this.idleQueue.push(() => { if (this.engine === engine) fn(); });
             if (this.idleTimer) return;
             this.idleTimer = setInterval(() => {
-                if (this.tilesLoading || Date.now() - this.lastTileEvent < IDLE_QUIET_MS) return;
+                if (!this.tilesIdle()) return;
                 clearInterval(this.idleTimer);
                 this.idleTimer = null;
                 const queue = this.idleQueue;
                 this.idleQueue = [];
                 queue.forEach(f => { try { f(); } catch (e) { console.error('More Maps:', e); } });
             }, IDLE_POLL_MS);
+        }
+
+        tilesIdle() {
+            const silent = Date.now() - this.lastTileEvent;
+            if (!this.tilesLoading) return silent >= IDLE_QUIET_MS;
+            return silent >= (this.tileStateKnown ? STUCK_LOADING_IDLE_MS : UNKNOWN_STATE_IDLE_MS);
         }
 
         clearTileCache() {
