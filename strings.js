@@ -15,9 +15,10 @@ if (typeof MoreMapsConfig !== 'undefined') {
             RESET_BUTTON: 'Delete All Extension Data',
             DELETE_DATA_CONFIRM: 'Are you sure you want to delete all extension data? This will remove all API keys and reset all settings. This action cannot be undone.',
             STYLING_HEADER: 'Map Styling',
-            STYLING_EXPLAINER: 'Only applies to custom layers.',
-            OPACITY_LABEL: 'Opacity',
+            STYLING_EXPLAINER: 'Applies to More Maps layers only.',
+            BRIGHTNESS_LABEL: 'Brightness',
             SATURATION_LABEL: 'Saturation',
+            STYLING_RESET: 'Reset',
             FAVORITE_ADD: 'Set as favorite map',
             FAVORITE_REMOVE: 'Remove favorite map',
             FAVORITE_UNAVAILABLE: 'Pick a More Maps layer to set it as your favorite'

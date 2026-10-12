@@ -442,6 +442,76 @@ function createSection(title, options) {
     return createCollapsibleSection(title, [grid]).section;
 }
 
+// ---------------------------------------------------------------------------
+// Map styling: brightness / saturation sliders (recoloured by inject.js)
+// ---------------------------------------------------------------------------
+const STYLING_SLIDERS = [
+    // Brightness is relative (0 = unchanged, so it's shown signed); saturation
+    // is absolute (100% = unchanged). Both defaults sit mid-track.
+    { key: 'brightness', label: () => STRINGS.UI.BRIGHTNESS_LABEL, storageKey: STORAGE_KEYS.TILE_BRIGHTNESS, min: -90, max: 90, signed: true },
+    { key: 'saturation', label: () => STRINGS.UI.SATURATION_LABEL, storageKey: STORAGE_KEYS.TILE_SATURATION, min: 0, max: 200 }
+];
+
+function postTileFilter() {
+    window.postMessage({ type: 'MOREMAPS_TILE_FILTER', filter: MoreMapsConfig.getTileFilter() }, '*');
+}
+
+function createStylingSection() {
+    const explainer = document.createElement('div');
+    explainer.textContent = STRINGS.UI.STYLING_EXPLAINER;
+    // Native headers are padded 24px at the sides; match that.
+    explainer.style.cssText = 'font-size:12px; color:#666; padding:0 24px 4px;';
+
+    const body = document.createElement('div');
+    body.style.cssText = 'display:flex; flex-direction:column; gap:8px; padding:8px 24px 12px;';
+    const inputs = STYLING_SLIDERS.map(s => {
+        const row = document.createElement('label');
+        row.style.cssText = 'display:grid; grid-template-columns:72px 1fr 44px; align-items:center; gap:8px; font-size:13px;';
+        const name = document.createElement('span');
+        name.textContent = s.label();
+        const input = document.createElement('input');
+        input.type = 'range';
+        input.min = s.min;
+        input.max = s.max;
+        input.step = 5;
+        input.style.cssText = `width:100%; accent-color:${ORANGE}; cursor:pointer;`;
+        const value = document.createElement('span');
+        value.style.cssText = 'text-align:right; font-variant-numeric:tabular-nums; color:#666;';
+        const showValue = () => {
+            const v = Number(input.value);
+            value.textContent = (s.signed && v > 0 ? '+' : '') + String(v).replace('-', '\u2212') + '%';
+        };
+        const sync = () => {
+            input.value = MoreMapsConfig.getTileFilter()[s.key];
+            showValue();
+        };
+        input.addEventListener('input', () => {
+            localStorage.setItem(s.storageKey, input.value);
+            showValue();
+            postTileFilter();
+        });
+        sync();
+        row.append(name, input, value);
+        body.appendChild(row);
+        return sync;
+    });
+
+    const { section, header } = createCollapsibleSection(STRINGS.UI.STYLING_HEADER, [explainer, body]);
+    section.dataset.mmStyling = '1';
+
+    const reset = document.createElement('button');
+    reset.type = 'button';
+    reset.textContent = STRINGS.UI.STYLING_RESET;
+    reset.style.cssText = 'margin-left:auto; border:none; background:none; padding:0; font:inherit; font-size:13px; color:#666; cursor:pointer;';
+    reset.addEventListener('click', () => {
+        STYLING_SLIDERS.forEach(s => localStorage.removeItem(s.storageKey));
+        inputs.forEach(sync => sync());
+        postTileFilter();
+    });
+    header.appendChild(reset);
+    return section;
+}
+
 // Cap the popover to the free space inside the map: from the edge it is
 // anchored to, up to the map's opposite edge, while staying clear of Strava's
 // own map overlays (the search/filter row and the zoom + location controls).
@@ -529,6 +599,7 @@ function injectIntoMenu(menu) {
     // the menu container, so insert relative to the section, not the menu.
     const anchorSection = stravaBase || menu.querySelector(SECTION_SEL);
     const sections = OUR_SECTIONS.map(s => createSection(s.title, s.options));
+    sections.push(createStylingSection());
     if (anchorSection) {
         anchorSection.after(...sections);
     } else {

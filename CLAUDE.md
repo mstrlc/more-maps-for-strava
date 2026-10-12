@@ -63,8 +63,7 @@ All cross-context communication uses `window.postMessage` with a `type` field:
 | Type | Direction | Purpose |
 |------|-----------|---------|
 | `MOREMAPS_MAP_SWITCH` | content→page | Switch active map layer |
-| `MOREMAPS_MAP_MOD_OPACITY` | content→page | Update layer opacity |
-| `MOREMAPS_MAP_MOD_SATURATION` | content→page | Update layer saturation |
+| `MOREMAPS_TILE_FILTER` | content→page | Brightness/saturation for custom tiles changed |
 | `MOREMAPS_PANORAMA_TOGGLE` | bidirectional | Enable/disable panorama mode |
 | `MOREMAPS_OPEN_SETTINGS` | page→content | Open API key settings modal |
 | `MOREMAPS_API_KEY_UPDATED` | bidirectional | API key or provider changed |
