@@ -37,16 +37,20 @@ Swap Strava's base map for layers from multiple providers, on the heatmap, the r
 - **OpenStreetMap** - Standard, CyclOSM, and Thunderforest Cycle Map
 - **Google Maps** - Standard, Satellite, Terrain, and Hybrid views
 
-On the heatmap and route builder, pick a layer from Strava's map style menu. On an activity page, choose one from the map style dropdown in the top-right corner of the map.
+On the heatmap and route builder, the layers are added straight into Strava's own **Change map style** popover, grouped by provider. The provider groups are collapsible — click a group header to fold it — and the state is remembered between visits, so the popover stays compact. On an activity page, the layers show up as extra groups in the map style dropdown above the map.
+
+Strava's own overlays (heatmap, routes, markers, labels) keep rendering on top of the custom base layer. Switching back to any of Strava's own styles removes the override.
 
 ### 👁️ Panorama Mode
 
-Click anywhere on the map to view street-level imagery:
+On the heatmap and route builder, click anywhere on the map to view street-level imagery in a draggable, resizable window:
 
 - **Mapy.cz Panorama** - Local coverage in Czech Republic
 - **Google Street View** - Global coverage
 
-Switch between providers with the control in the panorama window, or the dropdown next to the panorama toggle button on the map. Press **`P`** to toggle panorama mode on/off.
+A marker on the map shows where the camera stands and which way it looks — it rotates as you turn and moves along as you walk down a street.
+
+Switch between providers with the segmented control in the panorama window, or the dropdown next to the panorama toggle button on the map. Press **`P`** to toggle panorama mode on/off.
 
 ## Installation
 
@@ -119,18 +123,18 @@ Required for: Thunderforest Cycle Map layer.
 
 ### Panorama Provider
 
-Switch between Mapy.cz and Google Street View:
-- Use the control in the panorama window
-- Or use the dropdown next to the panorama toggle button on the map
+Switch between Mapy.cz and Google Street View either way — the choice is remembered:
+- The segmented control in the top-right of the panorama window
+- The dropdown next to the panorama toggle button on the map
 
 ## Usage
 
-1. Open the [Strava Heatmap](https://www.strava.com/maps), the [Route Builder](https://www.strava.com/maps/create), or any activity's detail page
-2. Choose a layer from Strava's map style menu (heatmap / route builder) or the map style dropdown (activity page)
+1. Open the [Strava Heatmap](https://www.strava.com/maps/global-heatmap), the [Route Builder](https://www.strava.com/maps/create), or any activity's detail page
+2. Choose a layer from Strava's **Change map style** popover (heatmap / route builder) or the map style dropdown (activity page)
 3. To enable panorama mode, click the eye icon or press **`P`**
 4. Click anywhere on the map to view street-level imagery
 
-> Panorama mode is available on the heatmap and route builder.
+> Panorama mode is available on the heatmap and route builder, not on activity detail pages.
 
 ## Development
 

@@ -82,6 +82,218 @@
     // moment — which in practice is a few hundred ms.
     const IDLE_QUIET_MS = 100;
     const IDLE_POLL_MS = 50;
+    // We only hear about loads that start after our listener is attached, so a
+    // new engine counts as loading until its first tile event — or until it has
+    // been silent this long, meaning nothing was in flight after all.
+    const UNKNOWN_STATE_IDLE_MS = 3000;
+    // Last resort so a load that never reports back can't block switching forever.
+    const STUCK_LOADING_IDLE_MS = 15000;
+
+    // Slider drags fire many updates; only refresh the tiles once they settle.
+    const FILTER_DEBOUNCE_MS = 250;
+    // Original (unrecoloured) provider tiles kept in memory, so a slider change
+    // re-recolours what we already have instead of downloading it again.
+    // 256px tiles are ~10-50 KB, so this holds several screens' worth.
+    const TILE_CACHE_MAX_BYTES = 64 * 1024 * 1024;
+
+    // --- Tile recolouring (brightness / saturation sliders) ---
+    //
+    // The engine has no opacity/filter knob for the carrier raster, and a CSS
+    // filter on the canvas would dim Strava's heatmap along with the base map.
+    // But the engine downloads raster tiles with plain main-thread XHRs
+    // (responseType 'arraybuffer'), so for our provider's tiles we fetch the
+    // image ourselves, recolour it, and re-open the same XHR on a blob: URL of
+    // the result. The engine still sees an ordinary request lifecycle, and
+    // Strava's own tiles (vector base, heatmap) pass through untouched.
+    //
+    // Provider tiles go through this path even with neutral settings, so the
+    // originals are already in memory by the time the user first moves a slider.
+
+    // Least-recently-used cache of original tile blobs, keyed by URL. Concurrent
+    // requests for the same tile share one download.
+    class TileCache {
+        constructor(maxBytes) {
+            this.maxBytes = maxBytes;
+            this.bytes = 0;
+            this.blobs = new Map();    // url -> Blob, oldest first
+            this.inFlight = new Map(); // url -> Promise<Blob>
+        }
+
+        get(url) {
+            const hit = this.blobs.get(url);
+            if (hit) {
+                this.blobs.delete(url);
+                this.blobs.set(url, hit); // mark as most recently used
+                return Promise.resolve(hit);
+            }
+            let pending = this.inFlight.get(url);
+            if (!pending) {
+                pending = this.download(url).finally(() => this.inFlight.delete(url));
+                this.inFlight.set(url, pending);
+            }
+            return pending;
+        }
+
+        async download(url) {
+            const res = await fetch(url, { credentials: 'omit' });
+            if (!res.ok) throw new Error(`HTTP ${res.status}`); // errors aren't cached
+            const blob = await res.blob();
+            this.blobs.set(url, blob);
+            this.bytes += blob.size;
+            for (const [oldUrl, old] of this.blobs) {
+                if (this.bytes <= this.maxBytes) break;
+                this.blobs.delete(oldUrl);
+                this.bytes -= old.size;
+            }
+            return blob;
+        }
+    }
+
+    const tileCache = new TileCache(TILE_CACHE_MAX_BYTES);
+
+    /**
+     * Recolour RGBA pixel data in place.
+     * @param {Uint8ClampedArray} data  RGBA bytes, 4 per pixel
+     * @param {number} brightness -1 = black, 0 = unchanged, 1 = white
+     * @param {number} saturation 0 = greyscale, 1 = unchanged, >1 = more vivid
+     */
+    function adjustPixels(data, brightness, saturation) {
+        // Saturation pushes each channel away from (or toward) the pixel's
+        // Rec. 709 luma; brightness then blends the result toward black or
+        // white: c * scale + lift, with lift = 0 when darkening.
+        // Uint8ClampedArray clamps over-saturated values to 0..255.
+        const scale = 1 - Math.abs(brightness);
+        const lift = brightness > 0 ? 255 * brightness : 0;
+        for (let i = 0; i < data.length; i += 4) {
+            const r = data[i], g = data[i + 1], b = data[i + 2];
+            const l = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+            data[i] = (l + (r - l) * saturation) * scale + lift;
+            data[i + 1] = (l + (g - l) * saturation) * scale + lift;
+            data[i + 2] = (l + (b - l) * saturation) * scale + lift;
+        }
+    }
+
+    // Decode → recolour → re-encode one tile image. Self-contained (it only
+    // uses adjustPixels), because its source is also loaded into the workers.
+    async function recolourBlob(blob, brightness, saturation) {
+        const bitmap = await createImageBitmap(blob);
+        const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        ctx.drawImage(bitmap, 0, 0);
+        bitmap.close();
+        const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        adjustPixels(img.data, brightness, saturation);
+        ctx.putImageData(img, 0, 0);
+        return canvas.convertToBlob({ type: 'image/png' });
+    }
+
+    // A screenful is ~100 tiles. Recoloured on the main thread, every async
+    // step queues behind the engine's rendering, which took tiles seconds to
+    // arrive. A small worker pool does it off-thread; if workers can't start
+    // (or die), tiles fall back to the main thread.
+    function createRecolourer() {
+        const pending = new Map(); // id -> { args, resolve, reject }
+        let workers = [];
+        let nextId = 0;
+        const onMainThread = (p) => recolourBlob(...p.args).then(p.resolve, p.reject);
+        const fail = () => {
+            workers.forEach(w => w.terminate());
+            workers = [];
+            pending.forEach(onMainThread);
+            pending.clear();
+        };
+        try {
+            const src = `${adjustPixels}\n${recolourBlob}\n` +
+                'self.onmessage = async (e) => {\n' +
+                '    const { id, args } = e.data;\n' +
+                '    try { self.postMessage({ id, blob: await recolourBlob(...args) }); }\n' +
+                '    catch (err) { self.postMessage({ id, error: String(err) }); }\n' +
+                '};';
+            const url = URL.createObjectURL(new Blob([src], { type: 'text/javascript' }));
+            const count = Math.min(4, Math.max(2, (navigator.hardwareConcurrency || 4) >> 1));
+            for (let i = 0; i < count; i++) {
+                const worker = new Worker(url);
+                worker.onmessage = (e) => {
+                    const p = pending.get(e.data.id);
+                    if (!p) return;
+                    pending.delete(e.data.id);
+                    if (e.data.error) p.reject(new Error(e.data.error));
+                    else p.resolve(e.data.blob);
+                };
+                worker.onerror = fail;
+                workers.push(worker);
+            }
+        } catch (e) {
+            fail();
+        }
+        return (...args) => new Promise((resolve, reject) => {
+            const p = { args, resolve, reject };
+            if (!workers.length) { onMainThread(p); return; }
+            const id = nextId++;
+            pending.set(id, p);
+            workers[id % workers.length].postMessage({ id, args });
+        });
+    }
+
+    const recolour = createRecolourer();
+
+    async function recolourTile(url, filter) {
+        const original = await tileCache.get(url);
+        if (MoreMapsConfig.isNeutralTileFilter(filter)) return URL.createObjectURL(original);
+        const blob = await recolour(original, filter.brightness / 100, filter.saturation / 100);
+        return URL.createObjectURL(blob);
+    }
+
+    // filterFor(url) returns the filter to apply to that request, or null to
+    // let it through untouched.
+    function installTileInterceptor(filterFor) {
+        const proto = XMLHttpRequest.prototype;
+        const { open, send, setRequestHeader, abort } = proto;
+
+        proto.open = function () {
+            this._mm = { args: Array.from(arguments), headers: [], pending: false };
+            return open.apply(this, arguments);
+        };
+        proto.setRequestHeader = function (name, value) {
+            if (this._mm) this._mm.headers.push([name, value]);
+            return setRequestHeader.apply(this, arguments);
+        };
+        proto.abort = function () {
+            const mm = this._mm;
+            // Aborting a request that was never really sent fires no events;
+            // send it so the engine gets the abort/loadend it expects.
+            if (mm && mm.pending) { mm.pending = false; send.call(this, mm.body); }
+            return abort.apply(this, arguments);
+        };
+        proto.send = function (body) {
+            const mm = this._mm;
+            const url = mm && String(mm.args[1]);
+            const filter = mm && filterFor(url);
+            if (!filter) return send.apply(this, arguments);
+
+            mm.pending = true;
+            mm.body = body;
+            const sendTo = (target) => {
+                if (!mm.pending || this._mm !== mm) return false; // aborted or reused
+                mm.pending = false;
+                const args = mm.args.slice();
+                args[1] = target;
+                open.apply(this, args);
+                mm.headers.forEach(h => setRequestHeader.apply(this, h));
+                send.call(this, body);
+                return true;
+            };
+            recolourTile(url, filter).then(
+                (blobUrl) => {
+                    if (sendTo(blobUrl)) this.addEventListener('loadend', () => URL.revokeObjectURL(blobUrl), { once: true });
+                    else URL.revokeObjectURL(blobUrl);
+                },
+                // Fall back to the original request, so errors (404s, a bad API
+                // key) reach the engine exactly as before.
+                () => sendTo(url)
+            );
+        };
+    }
 
     // Background tabs (e.g. middle-click from the dashboard) pause rendering
     // and throttle timers, so the engine doesn't finish initialising until the
@@ -111,14 +323,20 @@
             this.carrierActive = false;    // is the engine on the carrier map type?
             this.cachedUrl = null;         // provider whose tiles the carrier cache may hold
             this.tilesLoading = false;     // from the engine's tile-loading listener
+            this.tileStateKnown = false;   // seen a tile event since attaching?
             this.lastTileEvent = 0;
             this.idleQueue = [];           // engine calls waiting for tile loading to settle
             this.idleTimer = null;
             this.coverObserver = null;     // hides the canvas until the favorite is applied
             this.pendingApply = null;      // engine we're waiting on before applying
+            this.tileFilter = null;        // brightness/saturation, null when neutral
+            this.filterTimer = null;
+            this.refreshQueued = false;    // a filter refresh is waiting for idle
         }
 
         start() {
+            this.setTileFilter(MoreMapsConfig.getTileFilter(), false);
+            installTileInterceptor((url) => this.filterFor(url));
             window.addEventListener('message', this.handleMessage.bind(this));
             if (this.currentMapType !== 'strava-default') this.coverMap();
             this.poller = setInterval(() => this.findEngine(), 2000);
@@ -289,15 +507,25 @@
         attachEngine(engine) {
             this.carrierActive = this.stravaStyle() === 'winter';
             this.cachedUrl = null;
-            this.tilesLoading = false;
+            this.tilesLoading = true; // until told otherwise, see UNKNOWN_STATE_IDLE_MS
+            this.tileStateKnown = false;
             this.lastTileEvent = Date.now();
             this.idleQueue = [];
+            this.refreshQueued = false; // a queued refresh died with the old engine
+            const onEvent = (loading) => {
+                if (this.engine !== engine) return;
+                this.tilesLoading = loading;
+                this.tileStateKnown = true;
+                this.lastTileEvent = Date.now();
+            };
             try {
                 engine.addTileLoadingListener({
-                    onTilesLoadingStarted: () => { this.tilesLoading = true; this.lastTileEvent = Date.now(); },
-                    onTilesLoaded: () => { this.tilesLoading = false; this.lastTileEvent = Date.now(); }
+                    onTilesLoadingStarted: () => onEvent(true),
+                    onTilesLoaded: () => onEvent(false)
                 });
-            } catch (e) {}
+            } catch (e) {
+                this.tilesLoading = false; // no signal at all: fall back to the quiet period
+            }
         }
 
         stravaStyle() {
@@ -311,13 +539,19 @@
             this.idleQueue.push(() => { if (this.engine === engine) fn(); });
             if (this.idleTimer) return;
             this.idleTimer = setInterval(() => {
-                if (this.tilesLoading || Date.now() - this.lastTileEvent < IDLE_QUIET_MS) return;
+                if (!this.tilesIdle()) return;
                 clearInterval(this.idleTimer);
                 this.idleTimer = null;
                 const queue = this.idleQueue;
                 this.idleQueue = [];
                 queue.forEach(f => { try { f(); } catch (e) { console.error('More Maps:', e); } });
             }, IDLE_POLL_MS);
+        }
+
+        tilesIdle() {
+            const silent = Date.now() - this.lastTileEvent;
+            if (!this.tilesLoading) return silent >= IDLE_QUIET_MS;
+            return silent >= (this.tileStateKnown ? STUCK_LOADING_IDLE_MS : UNKNOWN_STATE_IDLE_MS);
         }
 
         clearTileCache() {
@@ -384,8 +618,40 @@
                 }
             } else if (data.type === 'MOREMAPS_PANORAMA_TOGGLE') {
                 this.handlePanoramaToggle(data.active);
+            } else if (data.type === 'MOREMAPS_TILE_FILTER') {
+                this.setTileFilter(data.filter, true);
             }
-            // Opacity/saturation are unsupported by the FATMAP engine; ignored.
+        }
+
+        // --- Brightness / saturation ---
+
+        // Only tiles from the provider currently on the carrier go through the
+        // recolouring path (and its cache); everything else is left alone.
+        filterFor(url) {
+            if (!this.desiredUrl || !url.startsWith(this.desiredUrl.split('{')[0])) return null;
+            return this.tileFilter || MoreMapsConfig.TILE_FILTER_DEFAULTS;
+        }
+
+        setTileFilter(filter, refresh) {
+            const next = MoreMapsConfig.isNeutralTileFilter(filter) ? null : filter;
+            if (JSON.stringify(next) === JSON.stringify(this.tileFilter)) return;
+            this.tileFilter = next;
+            if (!refresh) return;
+            // Tiles already in the engine's cache keep their old colours: drop
+            // them (once loading is quiet, see whenTilesIdle) so they refetch.
+            clearTimeout(this.filterTimer);
+            // At most one refresh is queued: back-to-back clears would land
+            // while the first clear's reloads are in flight (the crash case).
+            // Tiles fetched after a change already use the new filter, so a
+            // single refresh once loading settles catches every change.
+            this.filterTimer = setTimeout(() => {
+                if (this.refreshQueued || !this.desiredUrl || !this.isEngine(this.engine)) return;
+                this.refreshQueued = true;
+                this.whenTilesIdle(() => {
+                    this.refreshQueued = false;
+                    if (this.desiredUrl) this.clearTileCache();
+                });
+            }, FILTER_DEBOUNCE_MS);
         }
 
         // --- Tile swapping ---

@@ -35,9 +35,8 @@ var MoreMapsConfig = {
         MAPY_KEY: 'moremaps_mapy_api_key',
         GOOGLE_KEY: 'moremaps_google_api_key',
         TF_KEY: 'moremaps_tf_api_key',
-        OPACITY: 'moremaps_opacity',
-        SATURATION_MAPBOX: 'moremaps_saturation_mapbox',
-        SATURATION_SLIDER: 'moremaps_saturation_slider',
+        TILE_BRIGHTNESS: 'moremaps_tile_brightness',
+        TILE_SATURATION: 'moremaps_tile_saturation',
         ACTIVE_ID: 'moremaps_active_id',
         FAVORITE_ID: 'moremaps_favorite_id',
         COLLAPSED_SECTIONS: 'moremaps_collapsed_sections',
@@ -68,4 +67,26 @@ MoreMapsConfig.getFavoriteMap = function () {
     const key = MoreMapsConfig.requiredKeyFor(id);
     if (key && !localStorage.getItem(key)) return 'strava-default';
     return id;
+};
+
+// Brightness/saturation applied to our provider tiles, in percent. Brightness
+// runs from -100 (black) to +100 (white); 0 and saturation 100 leave tiles untouched.
+MoreMapsConfig.TILE_FILTER_DEFAULTS = { brightness: 0, saturation: 100 };
+
+MoreMapsConfig.getTileFilter = function () {
+    const { STORAGE_KEYS, TILE_FILTER_DEFAULTS } = MoreMapsConfig;
+    const read = (key, fallback) => {
+        const v = parseFloat(localStorage.getItem(key));
+        return Number.isFinite(v) ? v : fallback;
+    };
+    return {
+        brightness: read(STORAGE_KEYS.TILE_BRIGHTNESS, TILE_FILTER_DEFAULTS.brightness),
+        saturation: read(STORAGE_KEYS.TILE_SATURATION, TILE_FILTER_DEFAULTS.saturation)
+    };
+};
+
+MoreMapsConfig.isNeutralTileFilter = function (filter) {
+    const { TILE_FILTER_DEFAULTS } = MoreMapsConfig;
+    return filter.brightness === TILE_FILTER_DEFAULTS.brightness &&
+        filter.saturation === TILE_FILTER_DEFAULTS.saturation;
 };

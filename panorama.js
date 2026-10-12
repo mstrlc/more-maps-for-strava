@@ -13,6 +13,8 @@
         expanded: false,
         window: null,
         iframe: null,
+        iframeReady: false,  // panorama.html has loaded and is listening
+        pendingInit: null,   // INIT_PANO waiting for the frame to load
         marker: null,
         engine: null,
         tapListener: null,
@@ -150,6 +152,15 @@
 
             iframe.src = extUrl + 'panorama.html';
             state.iframe = iframe;
+            state.iframeReady = false;
+            iframe.addEventListener('load', () => {
+                if (state.iframe !== iframe) return;
+                state.iframeReady = true;
+                if (state.pendingInit) {
+                    iframe.contentWindow.postMessage(state.pendingInit, '*');
+                    state.pendingInit = null;
+                }
+            });
 
             content.appendChild(iframe);
 
@@ -413,29 +424,14 @@
             state.lastPos = { lon, lat };
             PanoramaUI.createWindow(() => this.handleUserClose());
 
-            // Wait for iframe to be ready?
-            // We can just post message, if it's not ready it might miss it.
-            // Better to use onload or retry.
-            // Since it's a local file, it should load fast.
-            // Using a loop to ensure frame is there.
-
-            const attemptPost = (tries = 0) => {
-                if (state.iframe && state.iframe.contentWindow) {
-                    state.iframe.contentWindow.postMessage({
-                        type: 'INIT_PANO',
-                        provider,
-                        apiKey: key,
-                        lon,
-                        lat,
-                        yaw: state.lastYaw
-                    }, '*');
-                } else if (tries < 10) {
-                    setTimeout(() => attemptPost(tries + 1), 200);
-                }
-            };
-
-            // If iframe was just created, wait a bit
-            setTimeout(() => attemptPost(), 200);
+            // A message posted before panorama.html has loaded is lost (the
+            // panorama stays black), so a fresh frame gets it on its load event.
+            const init = { type: 'INIT_PANO', provider, apiKey: key, lon, lat, yaw: state.lastYaw };
+            if (state.iframe && state.iframeReady) {
+                state.iframe.contentWindow.postMessage(init, '*');
+            } else {
+                state.pendingInit = init;
+            }
 
             if (state.active && state.engine) {
                 PanoramaMarker.create(state.engine, lon, lat, state.lastYaw);
@@ -449,7 +445,7 @@
         },
 
         closeWindow() {
-            if (state.window) { state.window.remove(); state.window = null; state.iframe = null; }
+            if (state.window) { state.window.remove(); state.window = null; state.iframe = null; state.iframeReady = false; state.pendingInit = null; }
             PanoramaMarker.remove();
         },
 

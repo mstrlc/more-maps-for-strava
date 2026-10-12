@@ -185,6 +185,12 @@ function createStarIcon(size) {
     svg.setAttribute('aria-hidden', 'true');
     const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
     path.setAttribute('d', 'M12 2.5l2.9 6.1 6.6.8-4.9 4.6 1.3 6.6L12 17.3l-5.9 3.3 1.3-6.6-4.9-4.6 6.6-.8z');
+    // Inline styles, not attributes: Strava's button CSS sets svg fills, and a
+    // stylesheet rule beats a presentation attribute. The path inherits from
+    // the svg, whose fill renderStar/refreshActivityFavorite set.
+    svg.style.stroke = 'currentColor';
+    path.style.fill = 'inherit';
+    path.style.stroke = 'inherit';
     svg.appendChild(path);
     return svg;
 }
@@ -223,7 +229,7 @@ function renderStar(star) {
     star.style.opacity = visible ? '1' : '0';
     star.style.background = fav ? '#fff' : 'rgba(0,0,0,0.5)';
     star.style.color = fav ? ORANGE : '#fff';
-    star.querySelector('svg').setAttribute('fill', fav ? 'currentColor' : 'none');
+    star.querySelector('svg').style.fill = fav ? 'currentColor' : 'none';
     star.title = fav ? STRINGS.UI.FAVORITE_REMOVE : STRINGS.UI.FAVORITE_ADD;
     star.setAttribute('aria-label', star.title);
     star.setAttribute('aria-pressed', String(fav));
@@ -382,7 +388,9 @@ function createChevron() {
     return svg;
 }
 
-function createSection(title, options) {
+// A popover section whose header toggles the visibility of `content`. The
+// collapsed state is remembered per title.
+function createCollapsibleSection(title, content) {
     const section = document.createElement('div');
     section.className = native.section;
     section.dataset.mmSection = title;
@@ -404,13 +412,9 @@ function createSection(title, options) {
     hit.appendChild(chevron);
     header.appendChild(hit);
 
-    const grid = document.createElement('div');
-    grid.className = native.optionsGrid;
-    options.forEach(opt => grid.appendChild(createOptionButton(opt)));
-
     let collapsed = collapsedSet().has(title);
     const render = () => {
-        grid.style.display = collapsed ? 'none' : '';
+        content.forEach(el => { el.style.display = collapsed ? 'none' : ''; });
         chevron.style.transform = collapsed ? 'rotate(-90deg)' : '';
         hit.setAttribute('aria-expanded', String(!collapsed));
     };
@@ -427,7 +431,84 @@ function createSection(title, options) {
     });
 
     section.appendChild(header);
-    section.appendChild(grid);
+    content.forEach(el => section.appendChild(el));
+    return { section, header };
+}
+
+function createSection(title, options) {
+    const grid = document.createElement('div');
+    grid.className = native.optionsGrid;
+    options.forEach(opt => grid.appendChild(createOptionButton(opt)));
+    return createCollapsibleSection(title, [grid]).section;
+}
+
+// ---------------------------------------------------------------------------
+// Map styling: brightness / saturation sliders (recoloured by inject.js)
+// ---------------------------------------------------------------------------
+const STYLING_SLIDERS = [
+    // Brightness is relative (0 = unchanged, so it's shown signed); saturation
+    // is absolute (100% = unchanged). Both defaults sit mid-track.
+    { key: 'brightness', label: () => STRINGS.UI.BRIGHTNESS_LABEL, storageKey: STORAGE_KEYS.TILE_BRIGHTNESS, min: -90, max: 90, signed: true },
+    { key: 'saturation', label: () => STRINGS.UI.SATURATION_LABEL, storageKey: STORAGE_KEYS.TILE_SATURATION, min: 0, max: 200 }
+];
+
+function postTileFilter() {
+    window.postMessage({ type: 'MOREMAPS_TILE_FILTER', filter: MoreMapsConfig.getTileFilter() }, '*');
+}
+
+function createStylingSection() {
+    const explainer = document.createElement('div');
+    explainer.textContent = STRINGS.UI.STYLING_EXPLAINER;
+    // Native headers are padded 24px at the sides; match that.
+    explainer.style.cssText = 'font-size:12px; color:#666; padding:0 24px 4px;';
+
+    const body = document.createElement('div');
+    body.style.cssText = 'display:flex; flex-direction:column; gap:8px; padding:8px 24px 12px;';
+    const inputs = STYLING_SLIDERS.map(s => {
+        const row = document.createElement('label');
+        row.style.cssText = 'display:grid; grid-template-columns:72px 1fr 44px; align-items:center; gap:8px; font-size:13px;';
+        const name = document.createElement('span');
+        name.textContent = s.label();
+        const input = document.createElement('input');
+        input.type = 'range';
+        input.min = s.min;
+        input.max = s.max;
+        input.step = 5;
+        input.style.cssText = `width:100%; accent-color:${ORANGE}; cursor:pointer;`;
+        const value = document.createElement('span');
+        value.style.cssText = 'text-align:right; font-variant-numeric:tabular-nums; color:#666;';
+        const showValue = () => {
+            const v = Number(input.value);
+            value.textContent = (s.signed && v > 0 ? '+' : '') + String(v).replace('-', '\u2212') + '%';
+        };
+        const sync = () => {
+            input.value = MoreMapsConfig.getTileFilter()[s.key];
+            showValue();
+        };
+        input.addEventListener('input', () => {
+            localStorage.setItem(s.storageKey, input.value);
+            showValue();
+            postTileFilter();
+        });
+        sync();
+        row.append(name, input, value);
+        body.appendChild(row);
+        return sync;
+    });
+
+    const { section, header } = createCollapsibleSection(STRINGS.UI.STYLING_HEADER, [explainer, body]);
+    section.dataset.mmStyling = '1';
+
+    const reset = document.createElement('button');
+    reset.type = 'button';
+    reset.textContent = STRINGS.UI.STYLING_RESET;
+    reset.style.cssText = 'margin-left:auto; border:none; background:none; padding:0; font:inherit; font-size:13px; color:#666; cursor:pointer;';
+    reset.addEventListener('click', () => {
+        STYLING_SLIDERS.forEach(s => localStorage.removeItem(s.storageKey));
+        inputs.forEach(sync => sync());
+        postTileFilter();
+    });
+    header.appendChild(reset);
     return section;
 }
 
@@ -518,6 +599,7 @@ function injectIntoMenu(menu) {
     // the menu container, so insert relative to the section, not the menu.
     const anchorSection = stravaBase || menu.querySelector(SECTION_SEL);
     const sections = OUR_SECTIONS.map(s => createSection(s.title, s.options));
+    sections.push(createStylingSection());
     if (anchorSection) {
         anchorSection.after(...sections);
     } else {
@@ -747,7 +829,7 @@ function refreshActivityFavorite() {
     btn.style.opacity = current === null ? '0.4' : '1';
     btn.style.cursor = current === null ? 'default' : '';
     btn.style.color = fav ? ORANGE : '';
-    btn.querySelector('svg').setAttribute('fill', fav ? 'currentColor' : 'none');
+    btn.querySelector('svg').style.fill = fav ? 'currentColor' : 'none';
     btn.title = current === null ? STRINGS.UI.FAVORITE_UNAVAILABLE
         : fav ? STRINGS.UI.FAVORITE_REMOVE : STRINGS.UI.FAVORITE_ADD;
     btn.setAttribute('aria-label', btn.title);
