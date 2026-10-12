@@ -91,6 +91,10 @@
 
     // Slider drags fire many updates; only refresh the tiles once they settle.
     const FILTER_DEBOUNCE_MS = 250;
+    // Original (unrecoloured) provider tiles kept in memory, so a slider change
+    // re-recolours what we already have instead of downloading it again.
+    // 256px tiles are ~10-50 KB, so this holds several screens' worth.
+    const TILE_CACHE_MAX_BYTES = 64 * 1024 * 1024;
 
     // --- Tile recolouring (brightness / saturation sliders) ---
     //
@@ -101,6 +105,51 @@
     // image ourselves, recolour it, and re-open the same XHR on a blob: URL of
     // the result. The engine still sees an ordinary request lifecycle, and
     // Strava's own tiles (vector base, heatmap) pass through untouched.
+    //
+    // Provider tiles go through this path even with neutral settings, so the
+    // originals are already in memory by the time the user first moves a slider.
+
+    // Least-recently-used cache of original tile blobs, keyed by URL. Concurrent
+    // requests for the same tile share one download.
+    class TileCache {
+        constructor(maxBytes) {
+            this.maxBytes = maxBytes;
+            this.bytes = 0;
+            this.blobs = new Map();    // url -> Blob, oldest first
+            this.inFlight = new Map(); // url -> Promise<Blob>
+        }
+
+        get(url) {
+            const hit = this.blobs.get(url);
+            if (hit) {
+                this.blobs.delete(url);
+                this.blobs.set(url, hit); // mark as most recently used
+                return Promise.resolve(hit);
+            }
+            let pending = this.inFlight.get(url);
+            if (!pending) {
+                pending = this.download(url).finally(() => this.inFlight.delete(url));
+                this.inFlight.set(url, pending);
+            }
+            return pending;
+        }
+
+        async download(url) {
+            const res = await fetch(url, { credentials: 'omit' });
+            if (!res.ok) throw new Error(`HTTP ${res.status}`); // errors aren't cached
+            const blob = await res.blob();
+            this.blobs.set(url, blob);
+            this.bytes += blob.size;
+            for (const [oldUrl, old] of this.blobs) {
+                if (this.bytes <= this.maxBytes) break;
+                this.blobs.delete(oldUrl);
+                this.bytes -= old.size;
+            }
+            return blob;
+        }
+    }
+
+    const tileCache = new TileCache(TILE_CACHE_MAX_BYTES);
 
     /**
      * Recolour RGBA pixel data in place.
@@ -189,9 +238,9 @@
     const recolour = createRecolourer();
 
     async function recolourTile(url, filter) {
-        const res = await fetch(url, { credentials: 'omit' });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const blob = await recolour(await res.blob(), filter.brightness / 100, filter.saturation / 100);
+        const original = await tileCache.get(url);
+        if (MoreMapsConfig.isNeutralTileFilter(filter)) return URL.createObjectURL(original);
+        const blob = await recolour(original, filter.brightness / 100, filter.saturation / 100);
         return URL.createObjectURL(blob);
     }
 
@@ -576,10 +625,11 @@
 
         // --- Brightness / saturation ---
 
-        // Only tiles from the provider currently on the carrier are recoloured.
+        // Only tiles from the provider currently on the carrier go through the
+        // recolouring path (and its cache); everything else is left alone.
         filterFor(url) {
-            if (!this.tileFilter || !this.desiredUrl) return null;
-            return url.startsWith(this.desiredUrl.split('{')[0]) ? this.tileFilter : null;
+            if (!this.desiredUrl || !url.startsWith(this.desiredUrl.split('{')[0])) return null;
+            return this.tileFilter || MoreMapsConfig.TILE_FILTER_DEFAULTS;
         }
 
         setTileFilter(filter, refresh) {
