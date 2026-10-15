@@ -17,6 +17,8 @@
     // clean, and Strava's heatmap/route overlays still composite on top.
     const CARRIER_SOURCE = 'winter-overlay-imagery';
     const CARRIER_MAP_TYPE = 2; // STRAVA_PLANET_TOPO_WINTER_HYBRID
+    // cachedUrl marker: the carrier cache holds Strava's own winter tiles.
+    const STRAVA_CARRIER_TILES = 'strava-winter';
     // Default template Strava ships (fallback for restore if we can't read it live).
     const CARRIER_DEFAULT_URL = '{STRAVA_TILE_SERVER_URL}/winter-imagery/{quadkey}.png?groupId={groupId}';
 
@@ -518,10 +520,11 @@
         }
 
         // Fresh engine: nothing of ours in its cache, and it's on whatever map
-        // type Strava started it with (the carrier only if that's Winter).
+        // type Strava started it with (the carrier only if that's Winter, in
+        // which case the carrier cache already holds Strava's winter tiles).
         attachEngine(engine) {
             this.carrierActive = this.stravaStyle() === 'winter';
-            this.cachedUrl = null;
+            this.cachedUrl = this.carrierActive ? STRAVA_CARRIER_TILES : null;
             this.tilesLoading = true; // until told otherwise, see UNKNOWN_STATE_IDLE_MS
             this.tileStateKnown = false;
             this.lastTileEvent = Date.now();
@@ -771,10 +774,9 @@
                 if (tsApi && this.savedCarrierUrl) {
                     tsApi.setTileSourceTemplateUrl(CARRIER_SOURCE, this.savedCarrierUrl);
                 }
-                if (this.cachedUrl) {
-                    this.cachedUrl = null;
-                    this.clearTileCache();
-                }
+                if (this.cachedUrl) this.clearTileCache();
+                // On Winter, Strava's own tiles now fill the carrier cache.
+                this.cachedUrl = this.carrierActive ? STRAVA_CARRIER_TILES : null;
             });
         }
 
