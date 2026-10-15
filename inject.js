@@ -544,6 +544,27 @@
             } catch (e) {
                 this.tilesLoading = false; // no events: tilesIdle falls back to the quiet period
             }
+            this.guardCustomStyle(engine);
+        }
+
+        // Strava never calls switchToCustomStyle, but other extensions do:
+        // Squadrats wraps setMapType and, 150ms after every call (ours
+        // included), swaps in Strava's Topo vector style with its grid spliced
+        // in. That replaces the carrier, so our map vanishes right after it
+        // loads. Ignore such switches while one of our maps is shown; once the
+        // user is back on a Strava map they go through again.
+        guardCustomStyle(engine) {
+            const original = engine.switchToCustomStyle;
+            if (typeof original !== 'function' || original.mmGuarded) return;
+            const guarded = (...args) => {
+                if (this.engine === engine && this.desiredUrl) {
+                    console.log('More Maps: ignored a custom style switch while a More Maps layer is active');
+                    return;
+                }
+                return original.apply(engine, args);
+            };
+            guarded.mmGuarded = true;
+            engine.switchToCustomStyle = guarded;
         }
 
         stravaStyle() {
