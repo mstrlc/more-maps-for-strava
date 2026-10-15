@@ -17,6 +17,8 @@
     // clean, and Strava's heatmap/route overlays still composite on top.
     const CARRIER_SOURCE = 'winter-overlay-imagery';
     const CARRIER_MAP_TYPE = 2; // STRAVA_PLANET_TOPO_WINTER_HYBRID
+    // cachedUrl marker: the carrier cache holds Strava's own winter tiles.
+    const STRAVA_CARRIER_TILES = 'strava-winter';
     // Default template Strava ships (fallback for restore if we can't read it live).
     const CARRIER_DEFAULT_URL = '{STRAVA_TILE_SERVER_URL}/winter-imagery/{quadkey}.png?groupId={groupId}';
 
@@ -83,8 +85,11 @@
     const IDLE_QUIET_MS = 100;
     const IDLE_POLL_MS = 50;
     // We only hear about loads that start after our listener is attached, so a
-    // new engine counts as loading until its first tile event — or until it has
-    // been silent this long, meaning nothing was in flight after all.
+    // new engine counts as loading until its first tile event.
+    // That listener only reports edges, and a freshly captured engine is
+    // usually mid-load: it can stay silent for 10s+ and then send a lone
+    // 'loaded'. Silence alone isn't idleness, so until the first event we also
+    // require the engine's tile requests to have been quiet this long.
     const UNKNOWN_STATE_IDLE_MS = 3000;
     // Last resort so a load that never reports back can't block switching forever.
     const STUCK_LOADING_IDLE_MS = 15000;
@@ -244,6 +249,10 @@
         return URL.createObjectURL(blob);
     }
 
+    // The engine's tile requests (arraybuffer XHRs) as the engine sees them:
+    // from its send() — before any recolouring delay — until loadend.
+    const tileRequests = { inFlight: 0, lastActivity: 0 };
+
     // filterFor(url) returns the filter to apply to that request, or null to
     // let it through untouched.
     function installTileInterceptor(filterFor) {
@@ -266,6 +275,14 @@
             return abort.apply(this, arguments);
         };
         proto.send = function (body) {
+            if (this.responseType === 'arraybuffer') {
+                tileRequests.inFlight++;
+                tileRequests.lastActivity = Date.now();
+                this.addEventListener('loadend', () => {
+                    tileRequests.inFlight = Math.max(0, tileRequests.inFlight - 1);
+                    tileRequests.lastActivity = Date.now();
+                }, { once: true });
+            }
             const mm = this._mm;
             const url = mm && String(mm.args[1]);
             const filter = mm && filterFor(url);
@@ -503,10 +520,11 @@
         }
 
         // Fresh engine: nothing of ours in its cache, and it's on whatever map
-        // type Strava started it with (the carrier only if that's Winter).
+        // type Strava started it with (the carrier only if that's Winter, in
+        // which case the carrier cache already holds Strava's winter tiles).
         attachEngine(engine) {
             this.carrierActive = this.stravaStyle() === 'winter';
-            this.cachedUrl = null;
+            this.cachedUrl = this.carrierActive ? STRAVA_CARRIER_TILES : null;
             this.tilesLoading = true; // until told otherwise, see UNKNOWN_STATE_IDLE_MS
             this.tileStateKnown = false;
             this.lastTileEvent = Date.now();
@@ -524,8 +542,29 @@
                     onTilesLoaded: () => onEvent(false)
                 });
             } catch (e) {
-                this.tilesLoading = false; // no signal at all: fall back to the quiet period
+                this.tilesLoading = false; // no events: tilesIdle falls back to the quiet period
             }
+            this.guardCustomStyle(engine);
+        }
+
+        // Strava never calls switchToCustomStyle, but other extensions do:
+        // Squadrats wraps setMapType and, 150ms after every call (ours
+        // included), swaps in Strava's Topo vector style with its grid spliced
+        // in. That replaces the carrier, so our map vanishes right after it
+        // loads. Ignore such switches while one of our maps is shown; once the
+        // user is back on a Strava map they go through again.
+        guardCustomStyle(engine) {
+            const original = engine.switchToCustomStyle;
+            if (typeof original !== 'function' || original.mmGuarded) return;
+            const guarded = (...args) => {
+                if (this.engine === engine && this.desiredUrl) {
+                    console.log('More Maps: ignored a custom style switch while a More Maps layer is active');
+                    return;
+                }
+                return original.apply(engine, args);
+            };
+            guarded.mmGuarded = true;
+            engine.switchToCustomStyle = guarded;
         }
 
         stravaStyle() {
@@ -549,9 +588,24 @@
         }
 
         tilesIdle() {
-            const silent = Date.now() - this.lastTileEvent;
-            if (!this.tilesLoading) return silent >= IDLE_QUIET_MS;
-            return silent >= (this.tileStateKnown ? STUCK_LOADING_IDLE_MS : UNKNOWN_STATE_IDLE_MS);
+            const now = Date.now();
+            const silent = now - this.lastTileEvent;
+            if (silent >= STUCK_LOADING_IDLE_MS) return true;
+            if (this.tileStateKnown) return !this.tilesLoading && silent >= IDLE_QUIET_MS;
+            // State unknown (see UNKNOWN_STATE_IDLE_MS): no events, no tile
+            // requests and no terrain downloads for a while.
+            return silent >= UNKNOWN_STATE_IDLE_MS &&
+                tileRequests.inFlight === 0 &&
+                now - tileRequests.lastActivity >= UNKNOWN_STATE_IDLE_MS &&
+                !this.terrainDownloading();
+        }
+
+        terrainDownloading() {
+            try {
+                return !!JSON.parse(this.engine.getDebugApi().dumpEngineState()).terrain.areTilesBeingDownloaded;
+            } catch (e) {
+                return false;
+            }
         }
 
         clearTileCache() {
@@ -741,10 +795,9 @@
                 if (tsApi && this.savedCarrierUrl) {
                     tsApi.setTileSourceTemplateUrl(CARRIER_SOURCE, this.savedCarrierUrl);
                 }
-                if (this.cachedUrl) {
-                    this.cachedUrl = null;
-                    this.clearTileCache();
-                }
+                if (this.cachedUrl) this.clearTileCache();
+                // On Winter, Strava's own tiles now fill the carrier cache.
+                this.cachedUrl = this.carrierActive ? STRAVA_CARRIER_TILES : null;
             });
         }
 
