@@ -69,6 +69,7 @@ All cross-context communication uses `window.postMessage` with a `type` field:
 | `MOREMAPS_API_KEY_UPDATED` | bidirectional | API key or provider changed |
 | `MOREMAPS_ZWIFT_IMAGE_REQUEST` | page→content | Ask for a Zwift world image (fetched by `background.js`) |
 | `MOREMAPS_ZWIFT_IMAGE` | content→page | Zwift world image as base64, or an error |
+| `MOREMAPS_ZWIFT_FLY` | content→page | Centre the map on a Zwift world |
 | `INIT_PANO` | page→sandbox | Initialize panorama at coordinates |
 | `PANO_YAW` | sandbox→page | Camera yaw changed |
 | `PANO_POS` | sandbox→page | User navigated to new position |

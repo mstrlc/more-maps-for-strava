@@ -48,7 +48,7 @@ const OUR_SECTIONS = [
     { title: 'Mapy.cz', options: MAP_OPTIONS },
     { title: 'OpenStreetMap', options: OSM_OPTIONS },
     { title: 'Google Maps', options: GOOGLE_OPTIONS },
-    { title: 'Zwift', options: ZWIFT_OPTIONS }
+    { title: 'Zwift', options: ZWIFT_OPTIONS, extra: () => createZwiftWorldPicker() }
 ];
 
 // Strava ships two generations of this popover (the 2026-09 redesign moved the
@@ -381,13 +381,17 @@ function createOptionButton(opt) {
     if (activeMapId === opt.id) setOptionSelected(btn, true);
 
     btn.addEventListener('click', () => {
-        // Exclusive selection across the whole menu (native + ours).
-        const menu = btn.closest(`[class*="MapPreferences_menuContainer"]`) || document;
-        clearBaseSelection(menu);
-        setOptionSelected(btn, true);
+        selectOptionButton(btn);
         triggerMapSwitch(opt.id);
     });
     return btn;
+}
+
+// Exclusive selection across the whole menu (native + ours).
+function selectOptionButton(btn) {
+    const menu = btn.closest(`[class*="MapPreferences_menuContainer"]`) || document;
+    clearBaseSelection(menu);
+    setOptionSelected(btn, true);
 }
 
 // ---------------------------------------------------------------------------
@@ -483,11 +487,54 @@ function createCollapsibleSection(title, content) {
     return { section, header };
 }
 
-function createSection(title, options) {
+function createSection(title, options, extra) {
     const grid = document.createElement('div');
     grid.className = native.optionsGrid;
     options.forEach(opt => grid.appendChild(createOptionButton(opt)));
-    return createCollapsibleSection(title, [grid]).section;
+    return createCollapsibleSection(title, extra ? [grid, extra()] : [grid]).section;
+}
+
+// ---------------------------------------------------------------------------
+// Zwift: "Go to world" picker under the Zwift layer
+// ---------------------------------------------------------------------------
+// Picking a world switches to the Zwift layer (asking for the cdn.zwift.com
+// permission if needed) and centres the map on that world.
+function createZwiftWorldPicker() {
+    const row = document.createElement('label');
+    // Native headers are padded 24px at the sides; match that.
+    row.style.cssText = 'display:grid; grid-template-columns:auto 1fr; align-items:center; gap:8px; padding:8px 24px 12px; font-size:13px;';
+    const name = document.createElement('span');
+    name.textContent = STRINGS.UI.ZWIFT_GO_TO;
+    const select = document.createElement('select');
+    select.style.cssText = 'width:100%; font:inherit; padding:4px 6px; border:1px solid #ccc; border-radius:4px; background:#fff; cursor:pointer;';
+    const placeholder = new Option(STRINGS.UI.ZWIFT_CHOOSE_WORLD, '');
+    placeholder.disabled = true;
+    select.add(placeholder);
+    ZWIFT_WORLDS.forEach(w => select.add(new Option(w.name, w.id)));
+    select.value = '';
+
+    select.addEventListener('change', () => {
+        const world = select.value;
+        // Back to the placeholder, so picking the same world again still jumps.
+        select.value = '';
+        if (world) goToZwiftWorld(world);
+    });
+    row.append(name, select);
+    return row;
+}
+
+// Switch to the Zwift layer (asking for the cdn.zwift.com permission if
+// needed), then centre the map on the world.
+async function goToZwiftWorld(world) {
+    const zwiftMapId = ZWIFT_OPTIONS[0].id;
+    if (activeMapId !== zwiftMapId) {
+        // The map style popover, if it's open.
+        const btn = document.querySelector(`[data-mm-map-id="${zwiftMapId}"]`);
+        if (btn) selectOptionButton(btn);
+        await triggerMapSwitch(zwiftMapId);
+        if (activeMapId !== zwiftMapId) return; // permission refused
+    }
+    window.postMessage({ type: 'MOREMAPS_ZWIFT_FLY', world }, '*');
 }
 
 // ---------------------------------------------------------------------------
@@ -646,7 +693,7 @@ function injectIntoMenu(menu) {
     // redesign the sections sit inside a scroll area rather than directly in
     // the menu container, so insert relative to the section, not the menu.
     const anchorSection = stravaBase || menu.querySelector(SECTION_SEL);
-    const sections = OUR_SECTIONS.map(s => createSection(s.title, s.options));
+    const sections = OUR_SECTIONS.map(s => createSection(s.title, s.options, s.extra));
     sections.push(createStylingSection());
     if (anchorSection) {
         anchorSection.after(...sections);

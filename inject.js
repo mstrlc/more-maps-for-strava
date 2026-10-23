@@ -181,6 +181,8 @@
     // isn't worth downloading a multi-megabyte image for.
     const ZWIFT_MIN_DRAW_PX = 8;
     const TILE_SIZE = 256;
+    // Screen margin (px) around a world when centring on it.
+    const ZWIFT_FLY_PADDING = { top: 40, right: 40, bottom: 40, left: 40 };
 
     // Web Mercator, normalised to 0..1 across the world.
     const mercX = (lon) => (lon + 180) / 360;
@@ -813,6 +815,26 @@
                 this.handlePanoramaToggle(data.active);
             } else if (data.type === 'MOREMAPS_TILE_FILTER') {
                 this.setTileFilter(data.filter, true);
+            } else if (data.type === 'MOREMAPS_ZWIFT_FLY') {
+                this.flyToZwiftWorld(data.world);
+            }
+        }
+
+        // Centre the camera on a Zwift world, framing its whole image. Camera
+        // moves are safe at any time (Strava's own search does the same), so this
+        // doesn't wait for tiles to settle. Instant: the jump is often halfway
+        // around the globe, and an animation that short is just a flicker.
+        flyToZwiftWorld(id) {
+            const world = MoreMapsConfig.ZWIFT_WORLDS.find(w => w.id === id);
+            this.findEngine(true);
+            if (!world || !this.isEngine(this.engine)) return;
+            const [[north, west], [south, east]] = world.bounds;
+            try {
+                this.engine.getCamera().flyToBounds(
+                    { southWestCorner: { latitude: south, longitude: west }, northEastCorner: { latitude: north, longitude: east } },
+                    0, 0, 0, ZWIFT_FLY_PADDING, undefined);
+            } catch (e) {
+                console.error('More Maps: error flying to Zwift world', e);
             }
         }
 

@@ -21,7 +21,9 @@ if (typeof MoreMapsConfig !== 'undefined') {
             STYLING_RESET: 'Reset',
             FAVORITE_ADD: 'Set as favorite map',
             FAVORITE_REMOVE: 'Remove favorite map',
-            FAVORITE_UNAVAILABLE: 'Pick a More Maps layer to set it as your favorite'
+            FAVORITE_UNAVAILABLE: 'Pick a More Maps layer to set it as your favorite',
+            ZWIFT_GO_TO: 'Go to world',
+            ZWIFT_CHOOSE_WORLD: 'Choose a world\u2026'
         },
         PANORAMA: {
             LOADING: 'Loading Panorama...',

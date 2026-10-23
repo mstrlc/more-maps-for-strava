@@ -40,7 +40,7 @@ var MoreMapsConfig = {
     // stretched (in Web Mercator) over these [north-west, south-east] corners.
     // Bounds from the MIT-licensed zwift-data package, which zwiftmap.com uses.
     // Images live under ZWIFT_IMAGE_BASE and are downloaded from Zwift by each
-    // user's browser, never bundled.
+    // user's browser, never bundled. Listed in the "Go to world" picker's order.
     ZWIFT_IMAGE_BASE: 'https://cdn.zwift.com/static/images/maps/',
     ZWIFT_WORLDS: [
         { id: 'watopia', name: 'Watopia', bounds: [[-11.62597, 166.87747], [-11.74087, 167.03255]], image: 'MiniMap_Watopia_2.png' },
