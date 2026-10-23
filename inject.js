@@ -859,6 +859,14 @@
                 this.setTileFilter(data.filter, true);
             } else if (data.type === 'MOREMAPS_ZWIFT_FLY') {
                 this.flyToZwiftWorld(data.world);
+            } else if (data.type === 'MOREMAPS_ZWIFT_WHERE') {
+                this.findEngine(true);
+                let point = null;
+                try {
+                    const { latitude, longitude } = this.engine.getCamera().getTarget().lookAtPoint;
+                    point = { latitude, longitude };
+                } catch (e) {}
+                window.postMessage({ type: 'MOREMAPS_ZWIFT_HERE', point }, '*');
             }
         }
 

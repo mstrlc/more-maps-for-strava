@@ -122,6 +122,8 @@ window.addEventListener('message', (event) => {
         if (sel) sel.value = localStorage.getItem(STORAGE_KEYS.PANO_PROVIDER) || 'mapy';
     } else if (event.data.type === 'MOREMAPS_ZWIFT_IMAGE_REQUEST') {
         relayZwiftImage(event.data.world);
+    } else if (event.data.type === 'MOREMAPS_ZWIFT_HERE') {
+        markZwiftHere(event.data.point);
     }
 });
 
@@ -800,15 +802,18 @@ function createPanoramaButton() {
 // ---------------------------------------------------------------------------
 // Settings button — native nav item, placed next to "My Routes"
 // ---------------------------------------------------------------------------
-function createSettingsButton() {
-    if (document.querySelector('[data-key="more-maps-settings"]')) return;
+// A button in Strava's map nav bar (the horizontal menu holding "My Routes"),
+// styled like its neighbours.
+function createNavButton({ key, after, icon, label, onClick }) {
+    if (document.querySelector(`[data-key="${key}"]`)) return null;
+    const anchor = document.querySelector(`[data-key="${after}"]`);
     const myRoutes = document.querySelector('[data-key="my-routes"]');
-    if (!myRoutes) return;
+    if (!anchor || !myRoutes) return null;
     const link = myRoutes.querySelector('a, button');
 
     const item = document.createElement('div');
     item.className = myRoutes.className; // react-horizontal-scrolling-menu--item
-    item.setAttribute('data-key', 'more-maps-settings');
+    item.setAttribute('data-key', key);
 
     const inner = document.createElement('div');
     const btn = document.createElement('button');
@@ -818,20 +823,164 @@ function createSettingsButton() {
     btn.style.alignItems = 'center';
     btn.style.gap = '8px';
 
-    const icon = document.createElement('img');
-    icon.src = browser.runtime.getURL('icons/icon_black.svg');
-    icon.style.width = '16px';
-    icon.style.height = '16px';
+    const img = document.createElement('img');
+    img.src = browser.runtime.getURL(icon);
+    img.style.width = '16px';
+    img.style.height = '16px';
 
-    const label = document.createElement('span');
-    label.textContent = STRINGS.UI.SETTINGS_LABEL;
+    const text = document.createElement('span');
+    text.textContent = label;
 
-    btn.appendChild(icon);
-    btn.appendChild(label);
-    btn.addEventListener('click', showSettingsModal);
+    btn.appendChild(img);
+    btn.appendChild(text);
+    btn.addEventListener('click', () => onClick(btn));
     inner.appendChild(btn);
     item.appendChild(inner);
-    myRoutes.after(item);
+    anchor.after(item);
+    return btn;
+}
+
+function createSettingsButton() {
+    createNavButton({
+        key: 'more-maps-settings',
+        after: 'my-routes',
+        icon: 'icons/icon_black.svg',
+        label: STRINGS.UI.SETTINGS_LABEL,
+        onClick: () => showSettingsModal()
+    });
+}
+
+function createZwiftButton() {
+    createNavButton({
+        key: 'more-maps-zwift',
+        after: 'more-maps-settings',
+        icon: 'icons/zwift.svg',
+        label: STRINGS.UI.ZWIFT_NAV_LABEL,
+        onClick: toggleZwiftPanel
+    });
+}
+
+// ---------------------------------------------------------------------------
+// Zwift worlds panel (opened from the nav button)
+// ---------------------------------------------------------------------------
+const ZWIFTMAP_URL = 'https://zwiftmap.com/';
+const ZWIFT_PANEL_WIDTH = 340;
+let zwiftPanel = null;
+
+function toggleZwiftPanel(anchor) {
+    if (zwiftPanel) closeZwiftPanel();
+    else openZwiftPanel(anchor);
+}
+
+function closeZwiftPanel() {
+    if (!zwiftPanel) return;
+    zwiftPanel.cleanup();
+    zwiftPanel.el.remove();
+    zwiftPanel = null;
+}
+
+function createZwiftWorldRow(world) {
+    const row = document.createElement('button');
+    row.type = 'button';
+    row.dataset.mmZwiftWorld = world.id;
+    row.style.cssText = 'display:flex; align-items:center; gap:12px; width:100%; padding:8px 16px; border:none; background:none; text-align:left; cursor:pointer; font:inherit; color:#242428;';
+    row.addEventListener('mouseenter', () => { row.style.background = '#f7f7fa'; });
+    row.addEventListener('mouseleave', () => { row.style.background = 'none'; });
+
+    const text = document.createElement('div');
+    text.style.cssText = 'flex:1; min-width:0;';
+    const name = document.createElement('div');
+    name.textContent = world.name;
+    name.style.cssText = 'font-size:14px; font-weight:600;';
+    const region = document.createElement('div');
+    region.textContent = world.region;
+    region.style.cssText = 'font-size:12px; color:#6d6d78;';
+    text.append(name, region);
+
+    // Filled in by markZwiftHere() when the map is centred on this world.
+    const here = document.createElement('span');
+    here.dataset.mmZwiftHere = '';
+    here.textContent = STRINGS.UI.ZWIFT_HERE;
+    here.style.cssText = `display:none; font-size:11px; font-weight:600; color:${ORANGE}; white-space:nowrap;`;
+
+    const routes = document.createElement('a');
+    routes.href = ZWIFTMAP_URL + world.id;
+    routes.target = '_blank';
+    routes.rel = 'noopener';
+    routes.title = STRINGS.UI.ZWIFT_ROUTES;
+    routes.style.cssText = 'display:flex; padding:4px; color:#6d6d78;';
+    routes.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="7" y1="17" x2="17" y2="7"></line><polyline points="7 7 17 7 17 17"></polyline></svg>';
+    routes.addEventListener('click', (e) => e.stopPropagation());
+
+    row.append(text, here, routes);
+    row.addEventListener('click', () => {
+        closeZwiftPanel();
+        goToZwiftWorld(world.id);
+    });
+    return row;
+}
+
+function openZwiftPanel(anchor) {
+    const panel = document.createElement('div');
+    panel.id = 'moremaps-zwift-panel';
+    const rect = anchor.getBoundingClientRect();
+    const top = rect.bottom + 8;
+    const left = Math.max(16, Math.min(rect.left, window.innerWidth - ZWIFT_PANEL_WIDTH - 16));
+    panel.style.cssText = `position:fixed; top:${top}px; left:${left}px; width:${ZWIFT_PANEL_WIDTH}px; max-width:calc(100vw - 32px); max-height:${Math.max(200, window.innerHeight - top - 16)}px; overflow-y:auto; background:#fff; border-radius:8px; box-shadow:0 4px 24px rgba(0,0,0,0.2); z-index:10000; padding:12px 0; font-family:"Boathouse","Noto Sans","Segoe UI",sans-serif;`;
+
+    const header = document.createElement('div');
+    header.style.cssText = 'display:flex; align-items:center; gap:8px; padding:0 16px 4px;';
+    const logo = document.createElement('img');
+    logo.src = browser.runtime.getURL('icons/zwift.svg');
+    logo.style.cssText = 'width:20px; height:20px;';
+    const title = document.createElement('div');
+    title.textContent = STRINGS.UI.ZWIFT_NAV_LABEL;
+    title.style.cssText = 'font-size:16px; font-weight:700; color:#242428;';
+    header.append(logo, title);
+
+    const hint = document.createElement('div');
+    hint.textContent = STRINGS.UI.ZWIFT_PANEL_HINT;
+    hint.style.cssText = 'font-size:12px; color:#6d6d78; padding:0 16px 8px; line-height:1.4;';
+    panel.append(header, hint);
+
+    [
+        { title: STRINGS.UI.ZWIFT_FICTIONAL, worlds: ZWIFT_WORLDS.filter(w => w.fictional) },
+        { title: STRINGS.UI.ZWIFT_REAL, worlds: ZWIFT_WORLDS.filter(w => !w.fictional) }
+    ].forEach(group => {
+        const groupTitle = document.createElement('div');
+        groupTitle.textContent = group.title;
+        groupTitle.style.cssText = 'font-size:11px; font-weight:700; letter-spacing:0.04em; text-transform:uppercase; color:#6d6d78; padding:12px 16px 4px; border-top:1px solid #eee; margin-top:4px;';
+        panel.appendChild(groupTitle);
+        group.worlds.forEach(w => panel.appendChild(createZwiftWorldRow(w)));
+    });
+
+    const onPointerDown = (e) => {
+        if (!panel.contains(e.target) && !anchor.contains(e.target)) closeZwiftPanel();
+    };
+    const onKey = (e) => { if (e.key === 'Escape') closeZwiftPanel(); };
+    document.addEventListener('mousedown', onPointerDown, true);
+    document.addEventListener('keydown', onKey);
+    window.addEventListener('resize', closeZwiftPanel);
+    zwiftPanel = {
+        el: panel,
+        cleanup: () => {
+            document.removeEventListener('mousedown', onPointerDown, true);
+            document.removeEventListener('keydown', onKey);
+            window.removeEventListener('resize', closeZwiftPanel);
+        }
+    };
+    document.body.appendChild(panel);
+    // Ask inject.js where the camera is, to mark the world being viewed.
+    window.postMessage({ type: 'MOREMAPS_ZWIFT_WHERE' }, '*');
+}
+
+function markZwiftHere(point) {
+    if (!zwiftPanel || !point) return;
+    const world = ZWIFT_WORLDS.find(({ bounds: [[north, west], [south, east]] }) =>
+        point.latitude <= north && point.latitude >= south && point.longitude >= west && point.longitude <= east);
+    zwiftPanel.el.querySelectorAll('[data-mm-zwift-world]').forEach(row => {
+        row.querySelector('[data-mm-zwift-here]').style.display = world && row.dataset.mmZwiftWorld === world.id ? '' : 'none';
+    });
 }
 
 // ---------------------------------------------------------------------------
@@ -1103,6 +1252,7 @@ const observer = new MutationObserver(() => {
     if (menu) injectIntoMenu(menu);
     createPanoramaButton();
     createSettingsButton();
+    createZwiftButton();
     injectIntoActivitySelect();
 });
 
@@ -1113,6 +1263,7 @@ function init() {
     if (menu) injectIntoMenu(menu);
     createPanoramaButton();
     createSettingsButton();
+    createZwiftButton();
     injectIntoActivitySelect();
 
     document.addEventListener('keydown', (e) => {

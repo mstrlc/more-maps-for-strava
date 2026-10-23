@@ -42,21 +42,22 @@ var MoreMapsConfig = {
     // Images live under ZWIFT_IMAGE_BASE and are downloaded from Zwift by each
     // user's browser, never bundled. Listed in the "Go to world" picker's order.
     // `fictional` worlds sit on unrelated real terrain, which is flattened under them.
+    // `region` is where the world sits on the real map. Ids match zwiftmap.com's paths.
     // `turnedClockwise` images are stored a quarter turn off north-up; inject.js turns them back.
     ZWIFT_IMAGE_BASE: 'https://cdn.zwift.com/static/images/maps/',
     ZWIFT_WORLDS: [
-        { id: 'watopia', name: 'Watopia', bounds: [[-11.62597, 166.87747], [-11.74087, 167.03255]], image: 'MiniMap_Watopia_2.png', fictional: true },
-        { id: 'makuri-islands', name: 'Makuri Islands', bounds: [[-10.73746, 165.76591], [-10.85234, 165.88222]], image: 'MiniMap_Japan.png', fictional: true, turnedClockwise: true },
-        { id: 'france', name: 'France', bounds: [[-21.64155, 166.1384], [-21.7564, 166.26125]], image: 'MiniMap_France.png', fictional: true, turnedClockwise: true },
-        { id: 'crit-city', name: 'Crit City', bounds: [[-10.3657, 165.7824], [-10.4038, 165.8207]], image: 'MiniMap_CritCity.png', fictional: true },
-        { id: 'london', name: 'London', bounds: [[51.5362, -0.1776], [51.4601, -0.0555]], image: 'MiniMap_London.png' },
-        { id: 'new-york', name: 'New York', bounds: [[40.817257, -74.022655], [40.587913, -73.922165]], image: 'MiniMap_NewYork_2.png' },
-        { id: 'richmond', name: 'Richmond', bounds: [[37.5774, -77.48954], [37.5014, -77.394]], image: 'MiniMap_Richmond.png' },
-        { id: 'innsbruck', name: 'Innsbruck', bounds: [[47.2947, 11.3501], [47.2055, 11.4822]], image: 'MiniMap_Innsbruck.png' },
-        { id: 'bologna', name: 'Bologna', bounds: [[44.5308037, 11.26261748], [44.45463821, 11.36991729102076]], image: 'MiniMap_Bologna.png' },
-        { id: 'yorkshire', name: 'Yorkshire', bounds: [[54.0254, -1.632], [53.9491, -1.5022]], image: 'MiniMap_Yorkshire.png' },
-        { id: 'paris', name: 'Paris', bounds: [[48.9058, 2.2561], [48.82945, 2.3722]], image: 'MiniMap_Champs.png', turnedClockwise: true },
-        { id: 'scotland', name: 'Scotland', bounds: [[55.67595, -5.2802], [55.61845, -5.17798]], image: 'MiniMap_Scotland.png', turnedClockwise: true }
+        { id: 'watopia', name: 'Watopia', region: 'South Pacific', bounds: [[-11.62597, 166.87747], [-11.74087, 167.03255]], image: 'MiniMap_Watopia_2.png', fictional: true },
+        { id: 'makuri-islands', name: 'Makuri Islands', region: 'South Pacific', bounds: [[-10.73746, 165.76591], [-10.85234, 165.88222]], image: 'MiniMap_Japan.png', fictional: true, turnedClockwise: true },
+        { id: 'france', name: 'France', region: 'New Caledonia', bounds: [[-21.64155, 166.1384], [-21.7564, 166.26125]], image: 'MiniMap_France.png', fictional: true, turnedClockwise: true },
+        { id: 'crit-city', name: 'Crit City', region: 'South Pacific', bounds: [[-10.3657, 165.7824], [-10.4038, 165.8207]], image: 'MiniMap_CritCity.png', fictional: true },
+        { id: 'london', name: 'London', region: 'London, UK', bounds: [[51.5362, -0.1776], [51.4601, -0.0555]], image: 'MiniMap_London.png' },
+        { id: 'new-york', name: 'New York', region: 'New York, USA', bounds: [[40.817257, -74.022655], [40.587913, -73.922165]], image: 'MiniMap_NewYork_2.png' },
+        { id: 'richmond', name: 'Richmond', region: 'Richmond, Virginia, USA', bounds: [[37.5774, -77.48954], [37.5014, -77.394]], image: 'MiniMap_Richmond.png' },
+        { id: 'innsbruck', name: 'Innsbruck', region: 'Innsbruck, Austria', bounds: [[47.2947, 11.3501], [47.2055, 11.4822]], image: 'MiniMap_Innsbruck.png' },
+        { id: 'bologna', name: 'Bologna', region: 'Bologna, Italy', bounds: [[44.5308037, 11.26261748], [44.45463821, 11.36991729102076]], image: 'MiniMap_Bologna.png' },
+        { id: 'yorkshire', name: 'Yorkshire', region: 'Harrogate, UK', bounds: [[54.0254, -1.632], [53.9491, -1.5022]], image: 'MiniMap_Yorkshire.png' },
+        { id: 'paris', name: 'Paris', region: 'Paris, France', bounds: [[48.9058, 2.2561], [48.82945, 2.3722]], image: 'MiniMap_Champs.png', turnedClockwise: true },
+        { id: 'scotland', name: 'Scotland', region: 'Isle of Arran, UK', bounds: [[55.67595, -5.2802], [55.61845, -5.17798]], image: 'MiniMap_Scotland.png', turnedClockwise: true }
     ],
 
     STORAGE_KEYS: {
