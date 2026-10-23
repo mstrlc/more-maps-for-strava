@@ -10,7 +10,7 @@
   </p>
 </div>
 
-A browser extension that puts more base maps and a street-level panorama mode into Strava's maps. Swap Strava's map for Mapy.cz, OpenStreetMap or Google Maps on the global heatmap, the route builder and activity pages, while Strava's heatmap, routes and markers keep drawing on top.
+A browser extension that puts more base maps, Zwift's worlds and a street-level panorama mode into Strava's maps. Swap Strava's map for Mapy.cz, OpenStreetMap or Google Maps on the global heatmap, the route builder and activity pages, while Strava's heatmap, routes and markers keep drawing on top.
 
 <p align="center">
   <img src="assets/screenshots/heatmap.jpeg" alt="Global heatmap over Mapy.cz Outdoor, with the panorama window open" height="300">
@@ -22,7 +22,8 @@ A browser extension that puts more base maps and a street-level panorama mode in
 
 - **Eleven extra base maps.** Mapy.cz (Standard, Outdoor, Winter, Satellite), OpenStreetMap (Standard, CyclOSM, Thunderforest Cycle Map) and Google Maps (Standard, Satellite, Terrain, Hybrid).
 - **Built into Strava's own menus.** On the heatmap and route builder the maps appear in Strava's **Change map style** menu, grouped by provider in collapsible sections that remember their state. On activity pages they are extra groups in the map style dropdown.
-- **Strava stays on top.** The heatmap, routes, segments and markers keep rendering over the custom map, and picking any of Strava's own styles switches back.
+- **Strava stays on top.** The heatmap, routes, segments and markers keep rendering over the custom map, and picking any of Strava's own styles switches back. Strava's own road and rail lines are hidden underneath, so they don't double up with the custom map's.
+- **Zwift worlds.** One layer draws all twelve Zwift worlds where Zwift places them on the real globe: Watopia, Makuri Islands, France and Crit City in the South Pacific, and London, New York, Richmond, Innsbruck, Bologna, Yorkshire, Paris and Scotland over the real cities. Your virtual rides in the heatmap line up with Zwift's roads. The **Zwift Worlds** button next to **More Maps Settings** lists every world, marks the one you're looking at, links to its routes on [ZwiftMap](https://zwiftmap.com) and jumps there in one click. Real terrain is flattened under the made-up islands, so their art isn't lifted by the islands underneath.
 - **Favorite map.** Star a map and it loads automatically whenever you open a Strava map.
 - **Map styling.** Brightness and saturation sliders for the custom maps, so a busy map can fade behind the heatmap. Strava's own layers are left untouched.
 - **Panorama mode.** Click anywhere on the heatmap or route builder to open street-level imagery from Mapy.cz Panorama (Czech Republic) or Google Street View (worldwide) in a draggable, resizable window. A marker on the map shows where the camera stands and turns as you look around.
@@ -45,7 +46,7 @@ To load it by hand instead, download `moremaps.zip` from [Releases](https://gith
 | Google Maps (~3 min) | Google Street View only; the Google maps work without a key | [Google Cloud Console](https://console.cloud.google.com/google/maps-apis/credentials): create a project, enable the **Maps JavaScript API** (Chrome, Edge) and the **Maps Embed API** (Firefox), then create an API key |
 | Thunderforest (~1 min) | Thunderforest Cycle Map | [manage.thunderforest.com](https://manage.thunderforest.com/): create an account and copy its API key |
 
-OpenStreetMap Standard and CyclOSM need no key.
+OpenStreetMap Standard and CyclOSM need no key, and neither do the Zwift worlds. The first time you open them, the extension asks for permission to download Zwift's world maps from `cdn.zwift.com`; nothing of Zwift's is bundled with the extension.
 
 ## Building
 
@@ -74,6 +75,7 @@ Open the [global heatmap](https://www.strava.com/maps/global-heatmap), the [rout
 | Switch the base map | Pick a map in Strava's **Change map style** menu, or the map style dropdown on an activity page |
 | Go back to Strava's map | Pick any of Strava's own map styles |
 | Set a favorite map | Click the star on a map in the menu, next to the dropdown on an activity page, or choose it in **More Maps Settings** |
+| Explore Zwift's worlds | Click **Zwift Worlds** in the map navigation and pick a world, or pick **All Worlds** under **Zwift** in the map style menu |
 | Fade or tint the custom map | Drag the **Brightness** and **Saturation** sliders under **Map Styling** in the map style menu |
 | Turn panorama mode on or off | Click the eye button on the map, or press **P** |
 | Look around a spot | With panorama mode on, click the map |
@@ -89,9 +91,12 @@ manifest.json            Manifest V3 extension manifest
 constants.js             Map options, Strava selectors and storage keys (window.MoreMapsConfig)
 strings.js               User-visible text
 map-modifier.js          Content script: injects the page scripts, the menu entries,
-                         the panorama button and the settings modal
+                         the panorama button, the settings modal and the Zwift worlds panel
 inject.js                Page script: finds Strava's map engine and swaps its base tiles,
-                         recolours tiles for the brightness and saturation sliders
+                         recolours tiles for the brightness and saturation sliders,
+                         and cuts Zwift's world maps into tiles
+background.js            Downloads Zwift's world maps (cdn.zwift.com allows no page access)
+zwift-permission.html    Asks for the optional cdn.zwift.com permission (with zwift-permission.js)
 panorama.js              Page script: panorama mode, the floating window and map marker
 panorama.html            Sandboxed page hosting the panorama viewers
 panorama-sandbox.js      Loads Mapy.cz Panorama or Google Street View inside the sandbox
@@ -105,3 +110,5 @@ icons/                   Extension icons
 ## License
 
 More Maps for Strava is released under the [MIT License](LICENSE). You may use, modify and redistribute it, provided the copyright notice stays with it.
+
+Zwift world positions come from [zwift-data](https://github.com/andipaetzold/zwift-data) by Andi Pätzold (MIT). Zwift and its world maps are the property of Zwift, Inc.; this project is not affiliated with or endorsed by Zwift or Strava.
