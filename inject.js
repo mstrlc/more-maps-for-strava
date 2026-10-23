@@ -188,6 +188,31 @@
     const mercX = (lon) => (lon + 180) / 360;
     const mercY = (lat) => (1 - Math.log(Math.tan(Math.PI / 4 + lat * Math.PI / 360)) / Math.PI) / 2;
 
+    // Strava's terrain tiles: {STRAVA_TILE_SERVER_URL}/terrain/{quadkey}.hfz
+    const TERRAIN_TILE_RE = /\/terrain\/([0-3]+)\.hfz/;
+    const TERRAIN_CLEAR_DELAY_MS = 500;
+    // Open Pacific on the equator: Strava has no terrain there at any zoom.
+    const OCEAN_POINT = { lat: 0, lon: -140 };
+
+    function fromQuadkey(quadkey) {
+        let x = 0, y = 0;
+        for (let i = 0; i < quadkey.length; i++) {
+            const mask = 1 << (quadkey.length - 1 - i);
+            const digit = Number(quadkey[i]);
+            if (digit & 1) x |= mask;
+            if (digit & 2) y |= mask;
+        }
+        return { x, y };
+    }
+
+    function oceanQuadkey(z) {
+        const n = 2 ** z;
+        const x = Math.floor(mercX(OCEAN_POINT.lon) * n), y = Math.floor(mercY(OCEAN_POINT.lat) * n);
+        let quadkey = '';
+        for (let i = z - 1; i >= 0; i--) quadkey += ((x >> i) & 1) + 2 * ((y >> i) & 1);
+        return quadkey;
+    }
+
     // world -> Promise<{ levels: ImageBitmap[] }>. levels[0] is full size, each
     // next one half the previous: drawing the 8192px image straight into a few
     // pixels at low zoom would alias badly.
@@ -395,14 +420,18 @@
     const tileRequests = { inFlight: 0, lastActivity: 0 };
 
     // filterFor(url) returns the filter to apply to that request, or null to
-    // let it through untouched.
-    function installTileInterceptor(filterFor) {
+    // let it through untouched. rewriteUrl(url) returns a URL to request
+    // instead, or null.
+    function installTileInterceptor(filterFor, rewriteUrl) {
         const proto = XMLHttpRequest.prototype;
         const { open, send, setRequestHeader, abort } = proto;
 
         proto.open = function () {
-            this._mm = { args: Array.from(arguments), headers: [], pending: false };
-            return open.apply(this, arguments);
+            const args = Array.from(arguments);
+            const rewritten = args.length > 1 && rewriteUrl(String(args[1]));
+            if (rewritten) args[1] = rewritten;
+            this._mm = { args, headers: [], pending: false };
+            return open.apply(this, args);
         };
         proto.setRequestHeader = function (name, value) {
             if (this._mm) this._mm.headers.push([name, value]);
@@ -490,11 +519,12 @@
             this.tileFilter = null;        // brightness/saturation, null when neutral
             this.filterTimer = null;
             this.refreshQueued = false;    // a filter refresh is waiting for idle
+            this.terrainFlat = false;      // terrain cache holds flattened Zwift tiles
         }
 
         start() {
             this.setTileFilter(MoreMapsConfig.getTileFilter(), false);
-            installTileInterceptor((url) => this.filterFor(url));
+            installTileInterceptor((url) => this.filterFor(url), (url) => this.rewriteUrl(url));
             window.addEventListener('message', this.handleMessage.bind(this));
             if (this.currentMapType !== 'strava-default') this.coverMap();
             this.poller = setInterval(() => this.findEngine(), 2000);
@@ -931,8 +961,10 @@
                     }
                     // The cache is keyed by source, not URL: another provider's
                     // tiles would linger if the reset's cache clear didn't run.
-                    if (this.cachedUrl && this.cachedUrl !== url) this.clearTileCache();
+                    const cleared = this.cachedUrl && this.cachedUrl !== url;
+                    if (cleared) this.clearTileCache();
                     this.cachedUrl = url;
+                    this.syncTerrainCache(url, cleared);
                     this.uncoverMap(REVEAL_DELAY_MS);
                 });
             } catch (e) {
@@ -946,6 +978,45 @@
         // them while one of our maps is shown. The heatmap is unaffected.
         setStravaBaseShown(show) {
             try { this.engine.getContent().getOsmFilter().setShow(show); } catch (e) {}
+        }
+
+        // --- Flat terrain under fictional Zwift worlds ---
+        //
+        // Watopia & co. sit on real islands, whose elevation would lift and shade
+        // Zwift's art (most visible in 3D). Strava's terrain server has no tiles
+        // for open ocean: it answers 404 and the engine renders sea level. So
+        // while the Zwift map is shown, terrain tiles under a fictional world are
+        // redirected to an ocean tile — at every zoom: where a fine tile is
+        // missing the engine falls back to the coarser parent, which would bring
+        // the islands back. Coarse tiles span huge areas, but anywhere else the
+        // engine soon loads that area's own (untouched) fine tiles.
+        rewriteUrl(url) {
+            if (!this.desiredUrl || !MoreMapsConfig.isZwiftMap(this.currentMapType)) return null;
+            const m = url.match(TERRAIN_TILE_RE);
+            if (!m) return null;
+            const quadkey = m[1];
+            const z = quadkey.length;
+            const { x, y } = fromQuadkey(quadkey);
+            const n = 2 ** z;
+            const flat = MoreMapsConfig.ZWIFT_WORLDS.some(({ fictional, bounds: [[north, west], [south, east]] }) =>
+                fictional && mercX(east) * n > x && mercX(west) * n < x + 1 && mercY(south) * n > y && mercY(north) * n < y + 1);
+            if (!flat) return null;
+            return url.replace(TERRAIN_TILE_RE, (match) => match.replace(quadkey, oceanQuadkey(z)));
+        }
+
+        // Terrain cached before switching to (or away from) the Zwift map still
+        // has the other elevation. A switch from another provider already cleared
+        // the cache; otherwise clear it once the switch's own tiles have loaded,
+        // never right after setMapType (that crashes a freshly loaded engine).
+        syncTerrainCache(url, cleared) {
+            const flat = MoreMapsConfig.isZwiftMap(this.currentMapType);
+            if (cleared) { this.terrainFlat = flat; return; }
+            if (flat === this.terrainFlat) return;
+            setTimeout(() => this.whenTilesIdle(() => {
+                if (this.desiredUrl !== url || this.terrainFlat === flat) return;
+                this.clearTileCache();
+                this.terrainFlat = flat;
+            }), TERRAIN_CLEAR_DELAY_MS);
         }
 
         // Cleanup when the user clicks a native Strava style button. Strava's own
@@ -966,7 +1037,10 @@
                 if (tsApi && this.savedCarrierUrl) {
                     tsApi.setTileSourceTemplateUrl(CARRIER_SOURCE, this.savedCarrierUrl);
                 }
-                if (this.cachedUrl) this.clearTileCache();
+                if (this.cachedUrl) {
+                    this.clearTileCache();
+                    this.terrainFlat = false;
+                }
                 // On Winter, Strava's own tiles now fill the carrier cache.
                 this.cachedUrl = this.carrierActive ? STRAVA_CARRIER_TILES : null;
             });

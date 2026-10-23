@@ -41,12 +41,13 @@ var MoreMapsConfig = {
     // Bounds from the MIT-licensed zwift-data package, which zwiftmap.com uses.
     // Images live under ZWIFT_IMAGE_BASE and are downloaded from Zwift by each
     // user's browser, never bundled. Listed in the "Go to world" picker's order.
+    // `fictional` worlds sit on unrelated real terrain, which is flattened under them.
     ZWIFT_IMAGE_BASE: 'https://cdn.zwift.com/static/images/maps/',
     ZWIFT_WORLDS: [
-        { id: 'watopia', name: 'Watopia', bounds: [[-11.62597, 166.87747], [-11.74087, 167.03255]], image: 'MiniMap_Watopia_2.png' },
-        { id: 'makuri-islands', name: 'Makuri Islands', bounds: [[-10.73746, 165.76591], [-10.85234, 165.88222]], image: 'MiniMap_Japan.png' },
-        { id: 'france', name: 'France', bounds: [[-21.64155, 166.1384], [-21.7564, 166.26125]], image: 'MiniMap_France.png' },
-        { id: 'crit-city', name: 'Crit City', bounds: [[-10.3657, 165.7824], [-10.4038, 165.8207]], image: 'MiniMap_CritCity.png' },
+        { id: 'watopia', name: 'Watopia', bounds: [[-11.62597, 166.87747], [-11.74087, 167.03255]], image: 'MiniMap_Watopia_2.png', fictional: true },
+        { id: 'makuri-islands', name: 'Makuri Islands', bounds: [[-10.73746, 165.76591], [-10.85234, 165.88222]], image: 'MiniMap_Japan.png', fictional: true },
+        { id: 'france', name: 'France', bounds: [[-21.64155, 166.1384], [-21.7564, 166.26125]], image: 'MiniMap_France.png', fictional: true },
+        { id: 'crit-city', name: 'Crit City', bounds: [[-10.3657, 165.7824], [-10.4038, 165.8207]], image: 'MiniMap_CritCity.png', fictional: true },
         { id: 'london', name: 'London', bounds: [[51.5362, -0.1776], [51.4601, -0.0555]], image: 'MiniMap_London.png' },
         { id: 'new-york', name: 'New York', bounds: [[40.817257, -74.022655], [40.587913, -73.922165]], image: 'MiniMap_NewYork_2.png' },
         { id: 'richmond', name: 'Richmond', bounds: [[37.5774, -77.48954], [37.5014, -77.394]], image: 'MiniMap_Richmond.png' },
