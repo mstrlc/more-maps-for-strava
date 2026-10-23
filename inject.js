@@ -763,6 +763,7 @@
                         // Template first, so the carrier never shows Strava's winter tiles.
                         ts.setTileSourceTemplateUrl(CARRIER_SOURCE, url);
                     }
+                    this.setStravaBaseShown(false);
                     if (!this.carrierActive) {
                         this.engine.setMapType(CARRIER_MAP_TYPE);
                         this.carrierActive = true;
@@ -778,6 +779,14 @@
             }
         }
 
+        // The carrier map type is a hybrid: Strava draws its own vector roads,
+        // railways and paths over the raster. Over Mapy/OSM they roughly line up,
+        // but over satellite imagery they're stray lines, so hide them while one
+        // of our maps is shown. The heatmap is unaffected.
+        setStravaBaseShown(show) {
+            try { this.engine.getContent().getOsmFilter().setShow(show); } catch (e) {}
+        }
+
         // Cleanup when the user clicks a native Strava style button. Strava's own
         // handler switches the map type (we must not: setMapType crashes Firefox's
         // WASM). Once its tiles have loaded, restore the carrier's original
@@ -791,6 +800,7 @@
             this.whenTilesIdle(() => {
                 if (this.desiredUrl !== null) return; // back on a custom map already
                 this.carrierActive = this.stravaStyle() === 'winter';
+                this.setStravaBaseShown(true);
                 const tsApi = this.getTileSourcesApi();
                 if (tsApi && this.savedCarrierUrl) {
                     tsApi.setTileSourceTemplateUrl(CARRIER_SOURCE, this.savedCarrierUrl);
