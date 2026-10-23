@@ -213,6 +213,17 @@
         return quadkey;
     }
 
+    // A quarter turn anticlockwise: source (x, y) lands at (y, width - x).
+    function turnCounterClockwise(bitmap) {
+        const canvas = new OffscreenCanvas(bitmap.height, bitmap.width);
+        const ctx = canvas.getContext('2d');
+        ctx.translate(0, bitmap.width);
+        ctx.rotate(-Math.PI / 2);
+        ctx.drawImage(bitmap, 0, 0);
+        bitmap.close();
+        return canvas.transferToImageBitmap();
+    }
+
     // world -> Promise<{ levels: ImageBitmap[] }>. levels[0] is full size, each
     // next one half the previous: drawing the 8192px image straight into a few
     // pixels at low zoom would alias badly.
@@ -234,8 +245,9 @@
                 const binary = atob(msg.data);
                 const bytes = new Uint8Array(binary.length);
                 for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+                const config = MoreMapsConfig.ZWIFT_WORLDS.find(w => w.id === world);
                 createImageBitmap(new Blob([bytes], { type: 'image/png' }))
-                    .then(full => ({ levels: [full] }))
+                    .then(full => ({ levels: [config && config.turnedClockwise ? turnCounterClockwise(full) : full] }))
                     .then(resolve, reject);
             };
             window.addEventListener('message', onMessage);
