@@ -18,6 +18,12 @@
         "48": "icons/icon.png",
         "128": "icons/icon.png"
     },
+    "background": {
+        "service_worker": "background.js",
+        "scripts": [
+            "background.js"
+        ]
+    },
     "content_scripts": [
         {
             "matches": [
@@ -31,6 +37,9 @@
             ],
             "run_at": "document_start"
         }
+    ],
+    "optional_host_permissions": [
+        "https://cdn.zwift.com/*"
     ],
     "sandbox": {
         "pages": [
@@ -53,6 +62,7 @@
                 "assets/mapycom/*",
                 "assets/osm/*",
                 "assets/google/*",
+                "assets/zwift/*",
                 "icons/*"
             ],
             "matches": [

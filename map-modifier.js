@@ -32,7 +32,7 @@
     boot();
 }
 
-const { MAP_OPTIONS, OSM_OPTIONS, GOOGLE_OPTIONS, STORAGE_KEYS, STRINGS, SELECTORS } = MoreMapsConfig;
+const { MAP_OPTIONS, OSM_OPTIONS, GOOGLE_OPTIONS, ZWIFT_OPTIONS, ZWIFT_WORLDS, ZWIFT_IMAGE_BASE, STORAGE_KEYS, STRINGS, SELECTORS } = MoreMapsConfig;
 
 const ORANGE = '#fc4c02';
 // Start at the favorite map: inject.js applies it on page load. Without one,
@@ -47,7 +47,8 @@ let panoramaButtonEl = null;
 const OUR_SECTIONS = [
     { title: 'Mapy.cz', options: MAP_OPTIONS },
     { title: 'OpenStreetMap', options: OSM_OPTIONS },
-    { title: 'Google Maps', options: GOOGLE_OPTIONS }
+    { title: 'Google Maps', options: GOOGLE_OPTIONS },
+    { title: 'Zwift', options: ZWIFT_OPTIONS }
 ];
 
 // Strava ships two generations of this popover (the 2026-09 redesign moved the
@@ -119,8 +120,46 @@ window.addEventListener('message', (event) => {
     } else if (event.data.type === 'MOREMAPS_API_KEY_UPDATED') {
         const sel = document.getElementById('moremaps-pano-provider');
         if (sel) sel.value = localStorage.getItem(STORAGE_KEYS.PANO_PROVIDER) || 'mapy';
+    } else if (event.data.type === 'MOREMAPS_ZWIFT_IMAGE_REQUEST') {
+        relayZwiftImage(event.data.world);
     }
 });
+
+// ---------------------------------------------------------------------------
+// Zwift world images
+// ---------------------------------------------------------------------------
+// The page can't read cdn.zwift.com images (no CORS headers), so inject.js asks
+// us and the background script downloads them with the optional host permission.
+function relayZwiftImage(world) {
+    const reply = (msg) => window.postMessage({ type: 'MOREMAPS_ZWIFT_IMAGE', world, ...msg }, '*');
+    const config = ZWIFT_WORLDS.find(w => w.id === world);
+    if (!config) { reply({ error: 'Unknown world' }); return; }
+    browser.runtime.sendMessage({ type: 'zwift-image', url: ZWIFT_IMAGE_BASE + config.image }).then(
+        (res) => reply(res && res.data ? { data: res.data } : { error: (res && res.error) || 'No data' }),
+        (err) => reply({ error: String(err) })
+    );
+}
+
+// Resolves once the user answers the permission window (zwift-permission.html).
+// Closing it without answering leaves the switch pending until the next click.
+let resolveZwiftPermission = null;
+
+browser.runtime.onMessage.addListener((msg) => {
+    if (msg && msg.type === 'zwift-permission-result' && resolveZwiftPermission) {
+        resolveZwiftPermission(!!msg.granted);
+        resolveZwiftPermission = null;
+    }
+});
+
+async function ensureZwiftPermission() {
+    try {
+        if (await browser.runtime.sendMessage({ type: 'zwift-permission-check' })) return true;
+    } catch (e) {
+        return false;
+    }
+    browser.runtime.sendMessage({ type: 'zwift-permission-request' });
+    return new Promise((resolve) => { resolveZwiftPermission = resolve; });
+}
 
 function updatePanoramaUI(active) {
     isPanoramaActive = active;
@@ -132,7 +171,15 @@ function updatePanoramaUI(active) {
 // ---------------------------------------------------------------------------
 // Map switching
 // ---------------------------------------------------------------------------
-function triggerMapSwitch(mapId) {
+let requestedMapId = null;
+
+async function triggerMapSwitch(mapId) {
+    requestedMapId = mapId;
+    if (MoreMapsConfig.isZwiftMap(mapId)) {
+        const granted = await ensureZwiftPermission();
+        // Another map may have been picked while the permission window was open.
+        if (!granted || requestedMapId !== mapId) return;
+    }
     const requiredKey = MoreMapsConfig.requiredKeyFor(mapId);
     if (requiredKey && !localStorage.getItem(requiredKey)) {
         showSettingsModal(true, requiredKey);
@@ -147,6 +194,7 @@ function triggerMapSwitch(mapId) {
 // call setMapType ourselves — that crashes the WASM in Firefox — nor clearCache/
 // requestRender, which would fight Strava's switch. We only do passive cleanup.
 function clearToStrava() {
+    requestedMapId = 'strava-default';
     activeMapId = 'strava-default';
     localStorage.setItem(STORAGE_KEYS.ACTIVE_ID, 'strava-default');
     window.postMessage({ type: 'MOREMAPS_MAP_CLEAR' }, '*');

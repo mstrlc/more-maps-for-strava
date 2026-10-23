@@ -59,6 +59,10 @@
         },
         'google-hybrid': {
             url: 'https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}'
+        },
+        // Not a real server: renderZwiftTile() draws these tiles (see below).
+        'zwift-worlds': {
+            url: 'https://zwift.moremaps.invalid/{z}/{x}/{y}.png'
         }
     };
 
@@ -140,9 +144,8 @@
         }
 
         async download(url) {
-            const res = await fetch(url, { credentials: 'omit' });
-            if (!res.ok) throw new Error(`HTTP ${res.status}`); // errors aren't cached
-            const blob = await res.blob();
+            // Errors aren't cached.
+            const blob = ZWIFT_TILE_RE.test(url) ? await renderZwiftTile(url) : await fetchBlob(url);
             this.blobs.set(url, blob);
             this.bytes += blob.size;
             for (const [oldUrl, old] of this.blobs) {
@@ -154,7 +157,143 @@
         }
     }
 
+    async function fetchBlob(url) {
+        const res = await fetch(url, { credentials: 'omit' });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return res.blob();
+    }
+
     const tileCache = new TileCache(TILE_CACHE_MAX_BYTES);
+
+    // --- Zwift worlds ---
+    //
+    // Zwift publishes each world as one big minimap image, not as tiles. Like
+    // zwiftmap.com (a Leaflet image overlay), we stretch it over the world's
+    // real-world bounds in Web Mercator, and cut our own 256px tiles from it:
+    // the carrier template points at a fake host, and the tile interceptor
+    // renders those URLs here instead of downloading them. OpenStreetMap goes
+    // underneath, so the surroundings still show. A world's image is only
+    // downloaded once a tile shows it at a useful size.
+    const ZWIFT_TILE_RE = /^https:\/\/zwift\.moremaps\.invalid\/(\d+)\/(\d+)\/(\d+)\.png$/;
+    const ZWIFT_BASE_URL = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
+    const ZWIFT_IMAGE_TIMEOUT_MS = 30000;
+    // Worlds narrower than this on a tile are skipped: a few pixels of island
+    // isn't worth downloading a multi-megabyte image for.
+    const ZWIFT_MIN_DRAW_PX = 8;
+    const TILE_SIZE = 256;
+
+    // Web Mercator, normalised to 0..1 across the world.
+    const mercX = (lon) => (lon + 180) / 360;
+    const mercY = (lat) => (1 - Math.log(Math.tan(Math.PI / 4 + lat * Math.PI / 360)) / Math.PI) / 2;
+
+    // world -> Promise<{ levels: ImageBitmap[] }>. levels[0] is full size, each
+    // next one half the previous: drawing the 8192px image straight into a few
+    // pixels at low zoom would alias badly.
+    const zwiftImages = new Map();
+
+    function loadZwiftImage(world) {
+        let pending = zwiftImages.get(world);
+        if (pending) return pending;
+        pending = new Promise((resolve, reject) => {
+            const timer = setTimeout(() => done({ error: 'Timed out' }), ZWIFT_IMAGE_TIMEOUT_MS);
+            const onMessage = (e) => {
+                if (e.source !== window || !e.data || e.data.type !== 'MOREMAPS_ZWIFT_IMAGE' || e.data.world !== world) return;
+                done(e.data);
+            };
+            const done = (msg) => {
+                clearTimeout(timer);
+                window.removeEventListener('message', onMessage);
+                if (msg.error) { reject(new Error(msg.error)); return; }
+                const binary = atob(msg.data);
+                const bytes = new Uint8Array(binary.length);
+                for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+                createImageBitmap(new Blob([bytes], { type: 'image/png' }))
+                    .then(full => ({ levels: [full] }))
+                    .then(resolve, reject);
+            };
+            window.addEventListener('message', onMessage);
+            window.postMessage({ type: 'MOREMAPS_ZWIFT_IMAGE_REQUEST', world }, '*');
+        });
+        // Let a failed load (e.g. no permission yet) be retried later.
+        pending.catch(() => zwiftImages.delete(world));
+        zwiftImages.set(world, pending);
+        return pending;
+    }
+
+    // The smallest pyramid level that still has at least as many pixels as
+    // we're drawing, built on demand.
+    async function zwiftLevel(image, srcPerDest) {
+        let level = 0;
+        while (srcPerDest >= 2 ** (level + 1)) level++;
+        for (let i = 1; i <= level; i++) {
+            if (!image.levels[i]) {
+                const prev = await image.levels[i - 1];
+                image.levels[i] = createImageBitmap(prev, {
+                    resizeWidth: Math.max(1, prev.width >> 1),
+                    resizeHeight: Math.max(1, prev.height >> 1),
+                    resizeQuality: 'high'
+                });
+            }
+        }
+        const bitmap = await image.levels[level];
+        image.levels[level] = bitmap;
+        return bitmap;
+    }
+
+    // Where a world's whole image lands, in the pixels of tile (z, x, y).
+    function zwiftPlacement(bounds, z, x, y) {
+        const scale = TILE_SIZE * 2 ** z;
+        const [[north, west], [south, east]] = bounds;
+        return {
+            left: mercX(west) * scale - x * TILE_SIZE,
+            right: mercX(east) * scale - x * TILE_SIZE,
+            top: mercY(north) * scale - y * TILE_SIZE,
+            bottom: mercY(south) * scale - y * TILE_SIZE
+        };
+    }
+
+    async function drawZwiftWorld(ctx, image, p) {
+        // Only the part that overlaps the tile.
+        const dl = Math.max(p.left, 0), dr = Math.min(p.right, TILE_SIZE);
+        const dt = Math.max(p.top, 0), db = Math.min(p.bottom, TILE_SIZE);
+        const width = p.right - p.left, height = p.bottom - p.top;
+        const bitmap = await zwiftLevel(image, image.levels[0].width / width);
+        const kx = bitmap.width / width, ky = bitmap.height / height;
+        ctx.drawImage(bitmap,
+            (dl - p.left) * kx, (dt - p.top) * ky, (dr - dl) * kx, (db - dt) * ky,
+            dl, dt, dr - dl, db - dt);
+    }
+
+    async function renderZwiftTile(url) {
+        const [z, x, y] = url.match(ZWIFT_TILE_RE).slice(1).map(Number);
+        const worlds = MoreMapsConfig.ZWIFT_WORLDS
+            .map(world => ({ world, p: zwiftPlacement(world.bounds, z, x, y) }))
+            .filter(({ p }) => p.right > 0 && p.left < TILE_SIZE && p.bottom > 0 && p.top < TILE_SIZE &&
+                p.right - p.left >= ZWIFT_MIN_DRAW_PX);
+        const baseUrl = ZWIFT_BASE_URL.replace('{z}', z).replace('{x}', x).replace('{y}', y);
+        const [baseBlob, ...images] = await Promise.all([
+            fetchBlob(baseUrl).catch(() => null),
+            ...worlds.map(({ world }) => loadZwiftImage(world.id).catch((e) => {
+                console.warn(`More Maps: Zwift image for ${world.name} unavailable`, e.message);
+                return null;
+            }))
+        ]);
+        if (!images.some(Boolean)) {
+            // Nothing of Zwift's to draw here: the plain OpenStreetMap tile.
+            if (!baseBlob) throw new Error('No Zwift tile content');
+            return baseBlob;
+        }
+        const base = baseBlob && await createImageBitmap(baseBlob).catch(() => null);
+
+        const canvas = new OffscreenCanvas(TILE_SIZE, TILE_SIZE);
+        const ctx = canvas.getContext('2d');
+        ctx.imageSmoothingQuality = 'high';
+        if (base) { ctx.drawImage(base, 0, 0, TILE_SIZE, TILE_SIZE); base.close(); }
+        for (let i = 0; i < worlds.length; i++) {
+            if (images[i]) await drawZwiftWorld(ctx, images[i], worlds[i].p);
+        }
+        return canvas.convertToBlob({ type: 'image/png' });
+    }
 
     /**
      * Recolour RGBA pixel data in place.
@@ -781,8 +920,8 @@
 
         // The carrier map type is a hybrid: Strava draws its own vector roads,
         // railways and paths over the raster. Over Mapy/OSM they roughly line up,
-        // but over satellite imagery they're stray lines, so hide them while one
-        // of our maps is shown. The heatmap is unaffected.
+        // but over Zwift's worlds (and satellite) they're stray lines, so hide
+        // them while one of our maps is shown. The heatmap is unaffected.
         setStravaBaseShown(show) {
             try { this.engine.getContent().getOsmFilter().setShow(show); } catch (e) {}
         }
