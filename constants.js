@@ -40,7 +40,7 @@ var MoreMapsConfig = {
     // stretched (in Web Mercator) over these [north-west, south-east] corners.
     // Bounds from the MIT-licensed zwift-data package, which zwiftmap.com uses.
     // Images live under ZWIFT_IMAGE_BASE and are downloaded from Zwift by each
-    // user's browser, never bundled. Listed in the "Go to world" picker's order.
+    // user's browser, never bundled. Listed in the Zwift Worlds panel's order.
     // `fictional` worlds sit on unrelated real terrain, which is flattened under them.
     // `region` is where the world sits on the real map. Ids match zwiftmap.com's paths.
     // `turnedClockwise` images are stored a quarter turn off north-up; inject.js turns them back.
