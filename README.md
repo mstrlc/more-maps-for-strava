@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="icons/icon_orange.svg" width="96" height="96" alt="More Maps for Strava icon">
+  <img src="icons/icon.png" width="96" height="96" alt="More Maps for Strava icon">
   <h1>More Maps for Strava</h1>
   <p>
     <a href="https://chromewebstore.google.com/detail/more-maps-for-strava/adpgjdeigiekdjnjionhhblgfpmkionl">Chrome Web Store</a>
