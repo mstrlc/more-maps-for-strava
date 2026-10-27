@@ -1,8 +1,9 @@
 <!doctype html>
 <!--
-  Store listing images: orange background, headline, framed screenshots.
-  Open promo.html?s=1 … ?s=5 at a 1280×800 viewport (2× scale) and screenshot it.
-  Screenshots come from the full-size captures in ../../.shots/store (1680×1050 CSS px at 2×).
+  Store listing images: warm background, headline, framed screenshots.
+  Open promo.html?s=1 … ?s=7 at a 1280×800 viewport (2× scale) and screenshot it.
+  Chrome (five images): slides 1, 2, 3, 7, 5. Firefox: slides 1–6.
+  Screenshots come from the full-size captures in shots/ (1680×1050 CSS px at 2×).
 -->
 <html>
 <head>
@@ -63,7 +64,7 @@
 <body>
 <script>
 // Source screenshots are 1680×1050 viewports; crops below are in those units.
-const SRC_W = 1680, SRC_H = 1050, SHOTS = '../../.shots/store/';
+const SRC_W = 1680, SRC_H = 1050, SHOTS = 'shots/';
 // White glyphs on orange tiles, for list icons that aren't map thumbnails.
 const tile = (glyph) => 'data:image/svg+xml,' + encodeURIComponent(
   '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 44 44"><rect width="44" height="44" fill="#fc4c02"/>' + glyph + '</svg>');
@@ -93,21 +94,21 @@ const SLIDES = {
       ['../../assets/google/satellite.png', 'Google Maps', 'Standard, Satellite, Terrain, Hybrid'],
       ['zwift-icon.png', 'Zwift', 'All twelve worlds'],
     ],
-    shot: { src: '1-heatmap-mapy.png', x: 540, y: 110, w: 1000 },
-    callout: { src: '2-map-style-menu.png', crop: [18, 272, 405, 690], x: 500, y: 200, w: 270 },
+    shot: { src: '1-heatmap-mapy.jpg', x: 540, y: 110, w: 1000 },
+    callout: { src: '2-map-style-menu.jpg', crop: [18, 272, 405, 690], x: 500, y: 200, w: 270 },
   },
   2: {
     layout: 'bottom',
     title: 'Look around, <em>one click away</em>',
     text: 'Click the map for Mapy.com Panorama or Google Street View in a floating window.',
-    shot: { src: '4-panorama.png', x: 120, y: -140, w: 1040 },
-    callout: { src: '4-panorama.png', crop: [1109, 379, 551, 649], x: 780, y: 96, w: 380 },
+    shot: { src: '4-panorama.jpg', x: 120, y: -140, w: 1040 },
+    callout: { src: '4-panorama.jpg', crop: [1109, 379, 551, 649], x: 780, y: 96, w: 380 },
   },
   3: {
     layout: 'top',
     title: 'Every map, in <em>3D</em>',
     text: 'Custom maps drape over Strava’s terrain, with the heatmap following every ridge.',
-    shot: { src: '5-terrain-3d.png', x: 120, y: 240, w: 1040 },
+    shot: { src: '5-terrain-3d.jpg', x: 120, y: 240, w: 1040 },
   },
   4: {
     layout: 'side',
@@ -118,8 +119,8 @@ const SLIDES = {
       [STAR, 'Favourite map', 'Star one and it loads everywhere'],
       [ZWIFT, 'Zwift rides', 'Open on the Zwift map by themselves'],
     ],
-    shot: { src: '6-activity.png', x: 500, y: 150, w: 1000 },
-    callout: { src: '6-activity.png', crop: [1240, 6, 436, 40], x: 420, y: 100, w: 640 },
+    shot: { src: '6-activity.jpg', x: 500, y: 150, w: 1000 },
+    callout: { src: '6-activity.jpg', crop: [1240, 6, 436, 40], x: 420, y: 100, w: 640 },
     // The activity page's map style dropdown, opened (native select).
     image: { src: 'activity-picker.png', x: 735, y: 168, w: 180 },
   },
@@ -127,15 +128,15 @@ const SLIDES = {
     layout: 'top',
     title: 'Zwift’s worlds on the <em>real map</em>',
     text: 'All twelve worlds where Zwift places them, with your virtual rides drawn on top.',
-    shot: { src: '3-zwift-worlds.png', x: 120, y: 240, w: 1000 },
-    callout: { src: '3-zwift-worlds.png', crop: [1323, 125, 341, 791], x: 895, y: 255, w: 300 },
+    shot: { src: '3-zwift-worlds.jpg', x: 120, y: 240, w: 1000 },
+    callout: { src: '3-zwift-worlds.jpg', crop: [1323, 125, 341, 791], x: 895, y: 255, w: 300 },
   },
   // Firefox only: the Chrome Web Store takes five images.
   6: {
     layout: 'bottom',
     title: 'Plan routes on <em>any map</em>',
     text: 'Build routes in Strava’s route builder over Google Maps, Mapy.com or OpenStreetMap.',
-    shot: { src: '7-route-builder.png', x: 120, y: -140, w: 1040 },
+    shot: { src: '7-route-builder.jpg', x: 120, y: -140, w: 1040 },
   },
   // Chrome: activities and the route builder on one slide (it takes five images).
   7: {
@@ -149,10 +150,10 @@ const SLIDES = {
     ],
     // Activity map up top with its toolbar and the open dropdown; the route builder
     // underneath, bleeding off the bottom.
-    shot: { src: '7-route-builder.png', x: 500, y: 360, w: 660 },
+    shot: { src: '7-route-builder.jpg', x: 500, y: 360, w: 660 },
     callout: [
-      { src: '6-activity.png', crop: [560, 52, 1120, 650], x: 740, y: 60, w: 500 },
-      { src: '6-activity.png', crop: [1240, 6, 436, 40], x: 846, y: 72, w: 380 },
+      { src: '6-activity.jpg', crop: [560, 52, 1120, 650], x: 740, y: 60, w: 500 },
+      { src: '6-activity.jpg', crop: [1240, 6, 436, 40], x: 846, y: 72, w: 380 },
     ],
     image: { src: 'activity-picker.png', x: 1032, y: 112, w: 165 },
   },
