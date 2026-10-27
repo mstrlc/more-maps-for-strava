@@ -491,8 +491,11 @@ function createCollapsibleSection(title, content) {
     header.appendChild(hit);
 
     let collapsed = collapsedSet().has(title);
+    // Restore each element's own display (e.g. grid/flex) when expanding,
+    // rather than clearing it.
+    const displays = content.map(el => el.style.display);
     const render = () => {
-        content.forEach(el => { el.style.display = collapsed ? 'none' : ''; });
+        content.forEach((el, i) => { el.style.display = collapsed ? 'none' : displays[i]; });
         chevron.style.transform = collapsed ? 'rotate(-90deg)' : '';
         hit.setAttribute('aria-expanded', String(!collapsed));
     };
