@@ -22,8 +22,6 @@ if (typeof MoreMapsConfig !== 'undefined') {
             FAVORITE_ADD: 'Set as favorite map',
             FAVORITE_REMOVE: 'Remove favorite map',
             FAVORITE_UNAVAILABLE: 'Pick a More Maps layer to set it as your favorite',
-            ZWIFT_GO_TO: 'Go to world',
-            ZWIFT_CHOOSE_WORLD: 'Choose a world\u2026',
             ZWIFT_NAV_LABEL: 'Zwift Worlds',
             ZWIFT_PANEL_HINT: 'Jump to a world. Its map is drawn where Zwift places it on the real globe.',
             ZWIFT_FICTIONAL: 'Zwift islands',

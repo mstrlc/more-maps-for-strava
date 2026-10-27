@@ -49,7 +49,7 @@ const OUR_SECTIONS = [
     { title: 'Mapy.cz', options: MAP_OPTIONS },
     { title: 'OpenStreetMap', options: OSM_OPTIONS },
     { title: 'Google Maps', options: GOOGLE_OPTIONS },
-    { title: 'Zwift', options: ZWIFT_OPTIONS, extra: () => createZwiftWorldPicker(), zwift: true }
+    { title: 'Zwift', options: ZWIFT_OPTIONS, zwift: true }
 ];
 
 function ourSections() {
@@ -516,42 +516,16 @@ function createCollapsibleSection(title, content) {
     return { section, header };
 }
 
-function createSection(title, options, extra) {
+function createSection(title, options) {
     const grid = document.createElement('div');
     grid.className = native.optionsGrid;
     options.forEach(opt => grid.appendChild(createOptionButton(opt)));
-    return createCollapsibleSection(title, extra ? [grid, extra()] : [grid]).section;
+    return createCollapsibleSection(title, [grid]).section;
 }
 
 // ---------------------------------------------------------------------------
-// Zwift: "Go to world" picker under the Zwift layer
+// Zwift: jump to a world (used by the Zwift Worlds panel)
 // ---------------------------------------------------------------------------
-// Picking a world switches to the Zwift layer (asking for the cdn.zwift.com
-// permission if needed) and centres the map on that world.
-function createZwiftWorldPicker() {
-    const row = document.createElement('label');
-    // Native headers are padded 24px at the sides; match that.
-    row.style.cssText = 'display:grid; grid-template-columns:auto 1fr; align-items:center; gap:8px; padding:8px 24px 12px; font-size:13px;';
-    const name = document.createElement('span');
-    name.textContent = STRINGS.UI.ZWIFT_GO_TO;
-    const select = document.createElement('select');
-    select.style.cssText = 'width:100%; font:inherit; padding:4px 6px; border:1px solid #ccc; border-radius:4px; background:#fff; cursor:pointer;';
-    const placeholder = new Option(STRINGS.UI.ZWIFT_CHOOSE_WORLD, '');
-    placeholder.disabled = true;
-    select.add(placeholder);
-    ZWIFT_WORLDS.forEach(w => select.add(new Option(w.name, w.id)));
-    select.value = '';
-
-    select.addEventListener('change', () => {
-        const world = select.value;
-        // Back to the placeholder, so picking the same world again still jumps.
-        select.value = '';
-        if (world) goToZwiftWorld(world);
-    });
-    row.append(name, select);
-    return row;
-}
-
 // Switch to the Zwift layer (asking for the cdn.zwift.com permission if
 // needed), then centre the map on the world.
 async function goToZwiftWorld(world) {
@@ -722,7 +696,7 @@ function injectIntoMenu(menu) {
     // redesign the sections sit inside a scroll area rather than directly in
     // the menu container, so insert relative to the section, not the menu.
     const anchorSection = stravaBase || menu.querySelector(SECTION_SEL);
-    const sections = ourSections().map(s => createSection(s.title, s.options, s.extra));
+    const sections = ourSections().map(s => createSection(s.title, s.options));
     sections.push(createStylingSection());
     if (anchorSection) {
         anchorSection.after(...sections);
