@@ -1,0 +1,104 @@
+<!doctype html>
+<!--
+  Chrome Web Store promo tiles. Open tiles.html?t=small (440×280) or
+  tiles.html?t=marquee (1400×560) at that viewport size and screenshot it
+  (2× scale, then scale down). Export as JPEG: the store wants no alpha.
+-->
+<html>
+<head>
+<meta charset="utf-8">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;700;800&display=block">
+<style>
+  :root { --orange: #fc4c02; --ink: #1d1b19; --muted: #5f5a55; --bg: #f6f2ed; }
+  * { box-sizing: border-box; margin: 0; }
+  html, body { overflow: hidden; }
+  body { width: 100%; height: 100%; }
+  body {
+    position: relative;
+    background:
+      radial-gradient(circle at 100% 0%, rgba(252,76,2,.16), transparent 45%),
+      radial-gradient(circle at 0% 100%, rgba(252,76,2,.08), transparent 50%),
+      var(--bg);
+    color: var(--ink);
+    font-family: "Plus Jakarta Sans", -apple-system, "Helvetica Neue", sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  .abs { position: absolute; }
+  .brand { display: flex; align-items: center; font-weight: 700; line-height: 1.05; letter-spacing: -.01em; }
+  h1 { font-weight: 800; line-height: 1.04; letter-spacing: -.03em; }
+  h1 em { font-style: normal; color: var(--orange); }
+  p { font-weight: 500; line-height: 1.35; color: var(--muted); }
+  .frame { border-radius: 12px; overflow: hidden; background: #fff;
+    box-shadow: 0 24px 50px rgba(40,20,0,.18), 0 0 0 1px rgba(0,0,0,.08); }
+  .frame .bar { display: flex; align-items: center; background: #f1f1f1; }
+  .frame .bar i { border-radius: 50%; background: #d4d4d4; }
+  .frame .shot { background-size: 100% 100%; }
+  .card { border-radius: 10px; overflow: hidden; background-repeat: no-repeat;
+    box-shadow: 0 18px 40px rgba(40,20,0,.25), 0 0 0 1px rgba(0,0,0,.1); }
+  .chips { display: flex; flex-wrap: wrap; }
+  .chips span { display: inline-flex; align-items: center; background: #fff; border-radius: 999px; font-weight: 700;
+    box-shadow: 0 1px 3px rgba(40,20,0,.12), 0 0 0 1px rgba(0,0,0,.06); }
+  .chips img { border-radius: 50%; object-fit: cover; }
+</style>
+</head>
+<body>
+<script>
+const SRC_W = 1680, SRC_H = 1050, SHOTS = 'shots/';
+const px = (o) => Object.fromEntries(Object.entries(o).map(([k, v]) => [k, typeof v === 'number' ? v + 'px' : v]));
+const make = (html, style = {}) => {
+  const t = document.createElement('template');
+  t.innerHTML = html.trim();
+  const e = t.content.firstChild;
+  Object.assign(e.style, px(style));
+  document.body.appendChild(e);
+  return e;
+};
+const frame = (src, x, y, w, bar) => {
+  const f = make(`<div class="abs frame"><div class="bar" style="height:${bar}px;gap:${bar * .28}px;padding-left:${bar * .5}px">` +
+    `<i style="width:${bar * .38}px;height:${bar * .38}px"></i>`.repeat(3) + '</div><div class="shot"></div></div>', { left: x, top: y, width: w });
+  Object.assign(f.lastChild.style, { height: w * SRC_H / SRC_W + 'px', backgroundImage: `url(${SHOTS + src})` });
+  return f;
+};
+const card = (src, [cx, cy, cw, ch], x, y, w) => {
+  const k = w / cw;
+  return make('<div class="abs card"></div>', {
+    left: x, top: y, width: w, height: ch * k,
+    backgroundImage: `url(${SHOTS + src})`,
+    backgroundSize: `${SRC_W * k}px ${SRC_H * k}px`,
+    backgroundPosition: `${-cx * k}px ${-cy * k}px`,
+  });
+};
+const brand = (size, style) => make(
+  `<div class="abs brand" style="font-size:${size * .45}px;gap:${size * .3}px"><img src="../../icons/icon.png" style="width:${size}px;height:${size}px" alt=""><span>More Maps<br>for Strava</span></div>`, style);
+const chips = (items, size, style) => make('<div class="abs chips" style="gap:' + size * .35 + 'px">' + items.map(([icon, name]) =>
+  `<span style="font-size:${size * .5}px;gap:${size * .3}px;padding:${size * .18}px ${size * .45}px ${size * .18}px ${size * .18}px">` +
+  `<img src="${icon}" style="width:${size * .72}px;height:${size * .72}px" alt="">${name}</span>`).join('') + '</div>', style);
+
+const PROVIDERS = [
+  ['../../assets/mapycom/outdoor.png', 'Mapy.com'],
+  ['../../assets/osm/cyclosm.png', 'OpenStreetMap'],
+  ['../../assets/google/satellite.png', 'Google Maps'],
+  ['zwift-icon.png', 'Zwift worlds'],
+];
+
+const t = new URLSearchParams(location.search).get('t') || 'small';
+if (t === 'small') {
+  // 440×280: seen small in search results, so a big wordmark and one line.
+  Object.assign(document.documentElement.style, { width: '440px', height: '280px' });
+  frame('1-heatmap-mapy.jpg', 236, 96, 330, 10);
+  brand(56, { left: 26, top: 26 });
+  make('<h1 class="abs"><em>Better maps</em>,<br>right inside<br>Strava</h1>', { left: 26, top: 112, fontSize: 30 });
+} else {
+  // 1400×560: copy and provider chips on the left, the heatmap with its menu on the right.
+  Object.assign(document.documentElement.style, { width: '1400px', height: '560px' });
+  frame('1-heatmap-mapy.jpg', 660, 60, 860, 22);
+  card('2-map-style-menu.jpg', [18, 272, 405, 690], 610, 130, 230);
+  brand(52, { left: 72, top: 60 });
+  make('<h1 class="abs"><em>Better maps</em>,<br>right inside Strava</h1>', { left: 72, top: 168, fontSize: 56 });
+  make('<p class="abs">On the heatmap, route builder and activities.</p>', { left: 72, top: 310, fontSize: 22, width: 520 });
+  chips(PROVIDERS, 34, { left: 72, top: 380, width: 520 });
+}
+window.ready = Promise.all([document.fonts.ready, ...[...document.images].map(i => i.decode().catch(() => {}))]);
+</script>
+</body>
+</html>
