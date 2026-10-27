@@ -406,9 +406,11 @@ function createOptionButton(opt) {
     btn.appendChild(label);
     if (activeMapId === opt.id) setOptionSelected(btn, true);
 
-    btn.addEventListener('click', () => {
+    btn.addEventListener('click', async () => {
         selectOptionButton(btn);
-        triggerMapSwitch(opt.id);
+        await triggerMapSwitch(opt.id);
+        // The map is likely nowhere near a world: offer the worlds list too.
+        if (MoreMapsConfig.isZwiftMap(opt.id) && activeMapId === opt.id) showZwiftPanel();
     });
     return btn;
 }
@@ -923,8 +925,7 @@ function showZwiftPrompt() {
         if (!accepted) return;
         setZwiftEnabled(true);
         // Straight to the worlds list, from the button that just appeared.
-        const btn = document.querySelector('[data-key="more-maps-zwift"] button');
-        if (btn) openZwiftPanel(btn);
+        showZwiftPanel();
     });
 }
 
@@ -1004,6 +1005,13 @@ let zwiftPanel = null;
 function toggleZwiftPanel(anchor) {
     if (zwiftPanel) closeZwiftPanel();
     else openZwiftPanel(anchor);
+}
+
+// Open the panel under the Zwift Worlds nav button, if it's there and closed.
+function showZwiftPanel() {
+    if (zwiftPanel) return;
+    const btn = document.querySelector('[data-key="more-maps-zwift"] button');
+    if (btn) openZwiftPanel(btn);
 }
 
 function closeZwiftPanel() {
