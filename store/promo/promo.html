@@ -1,0 +1,219 @@
+<!doctype html>
+<!--
+  Store listing images: warm background, headline, framed screenshots.
+  Open promo.html?s=1 … ?s=7 at a 1280×800 viewport (2× scale) and screenshot it.
+  Chrome (five images): slides 1, 2, 3, 7, 5. Firefox: slides 1–6.
+  Screenshots come from the full-size captures in shots/ (1680×1050 CSS px at 2×).
+-->
+<html>
+<head>
+<meta charset="utf-8">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;700;800&display=block">
+<style>
+  :root { --orange: #fc4c02; --ink: #1d1b19; --muted: #5f5a55; --bg: #f6f2ed; }
+  * { box-sizing: border-box; margin: 0; }
+  html, body { width: 1280px; height: 800px; overflow: hidden; }
+  body {
+    position: relative;
+    background:
+      radial-gradient(circle at 100% 0%, rgba(252,76,2,.16), transparent 40%),
+      radial-gradient(circle at 0% 100%, rgba(252,76,2,.08), transparent 45%),
+      var(--bg);
+    color: var(--ink);
+    font-family: "Plus Jakarta Sans", -apple-system, "SF Pro Display", "Helvetica Neue", sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  .brand { position: absolute; display: flex; align-items: center; gap: 12px; font-weight: 700; font-size: 18px; line-height: 1.05; letter-spacing: -.01em; }
+  .brand img { width: 40px; height: 40px; }
+  .copy { position: absolute; }
+  h1 { font-size: 54px; line-height: 1.04; font-weight: 800; letter-spacing: -.03em; }
+  h1 em { font-style: normal; color: var(--orange); }
+  p { margin-top: 18px; font-size: 22px; line-height: 1.35; font-weight: 500; color: var(--muted); letter-spacing: -.005em; }
+
+  .frame {
+    position: absolute; border-radius: 14px; overflow: hidden; background: #fff;
+    box-shadow: 0 30px 60px rgba(40,20,0,.18), 0 0 0 1px rgba(0,0,0,.08);
+  }
+  .frame .bar { height: 26px; background: #f1f1f1; display: flex; align-items: center; gap: 7px; padding-left: 12px; }
+  .frame .bar i { width: 10px; height: 10px; border-radius: 50%; background: #d4d4d4; }
+  .frame .shot { background-repeat: no-repeat; }
+  .callout { position: absolute; border-radius: 14px; overflow: hidden; background-repeat: no-repeat;
+    box-shadow: 0 24px 50px rgba(40,20,0,.25), 0 0 0 1px rgba(0,0,0,.1); }
+
+  /* Layout "side": copy on the left, screenshot bleeding off the right. */
+  .side .brand { left: 64px; top: 56px; }
+  .side .copy { left: 64px; top: 230px; width: 400px; }
+  /* Layout "top": copy centred on top, screenshot bleeding off the bottom. */
+  .top .brand { left: 50%; transform: translateX(-50%); top: 40px; }
+  .top .copy { left: 0; right: 0; top: 104px; text-align: center; padding: 0 140px; }
+  .top p { margin-top: 12px; }
+  /* Layout "bottom": screenshot hanging off the top, copy centred underneath. */
+  .bottom .brand { left: 50%; transform: translateX(-50%); bottom: 34px; }
+  .bottom .copy { left: 0; right: 0; top: 572px; text-align: center; padding: 0 140px; }
+  .bottom p { margin-top: 10px; }
+
+  /* Provider list under the copy. */
+  ul { list-style: none; padding: 0; margin-top: 30px; display: flex; flex-direction: column; gap: 14px; }
+  li { display: grid; grid-template-columns: 44px 1fr; column-gap: 14px; align-items: center; }
+  li img { width: 44px; height: 44px; border-radius: 11px; object-fit: cover; grid-row: span 2;
+    box-shadow: 0 2px 6px rgba(40,20,0,.15), 0 0 0 1px rgba(0,0,0,.08); background: #fff; }
+  li b { font-size: 19px; font-weight: 700; letter-spacing: -.01em; }
+  li span { font-size: 15px; color: var(--muted); }
+</style>
+</head>
+<body>
+<script>
+// Source screenshots are 1680×1050 viewports; crops below are in those units.
+const SRC_W = 1680, SRC_H = 1050, SHOTS = 'shots/';
+// White glyphs on orange tiles, for list icons that aren't map thumbnails.
+const tile = (glyph) => 'data:image/svg+xml,' + encodeURIComponent(
+  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 44 44"><rect width="44" height="44" fill="#fc4c02"/>' + glyph + '</svg>');
+const STAR = tile('<path fill="#fff" d="M22 9l3.9 8.3 9.1 1.1-6.7 6.2 1.8 9L22 29.1l-8.1 4.5 1.8-9-6.7-6.2 9.1-1.1z"/>');
+// A planned route: start dot, winding path, end pin.
+const ROUTE = tile('<path d="M13 31c4 0 5-6 9-6s4 4 8 2 1-9-4-9" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-dasharray="0.1 5"/>' +
+  '<circle cx="13" cy="31" r="3.2" fill="#fff"/><path fill="#fff" d="M26 8.5a5.5 5.5 0 0 1 5.5 5.5c0 4-5.5 9-5.5 9s-5.5-5-5.5-9A5.5 5.5 0 0 1 26 8.5z"/>' +
+  '<circle cx="26" cy="14" r="2" fill="#fc4c02"/>');
+// Stacked map layers, for "every map".
+const LAYERS = tile('<g fill="none" stroke="#fff" stroke-width="2.4" stroke-linejoin="round">' +
+  '<path d="M22 10l13 7-13 7-13-7z" fill="#fff"/><path d="M9 22.5l13 7 13-7"/><path d="M9 28l13 7 13-7"/></g>');
+// Zwift's Z (icons/zwift.svg), for Zwift rides.
+const ZWIFT = tile('<path fill="#fff" transform="translate(11.35 12) scale(0.5)" d="M30.866 26.667h-4.49L42.565 0H6.615C2.961 0 0 2.985 0 6.667s2.962 6.666 6.615 6.666h4.469L.955 30.018S0 31.421 0 33.443C0 37.065 2.913 40 6.506 40h24.36c3.654 0 6.615-2.985 6.615-6.667 0-3.681-2.961-6.666-6.615-6.666"/>');
+// A bike, for recorded activities.
+const BIKE = tile('<g fill="none" stroke="#fff" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round">' +
+  '<circle cx="13" cy="27" r="5.5"/><circle cx="31" cy="27" r="5.5"/><path d="M13 27l5-10h9l4 10M18 17l6 10 3-10M16 14h5M27 17l-1-4h3"/></g>');
+
+const SLIDES = {
+  1: {
+    layout: 'side',
+    top: 150,
+    title: '<em>Better maps</em>, right inside Strava',
+    text: 'On the heatmap, route builder and activities.',
+    list: [
+      ['../../assets/mapycom/outdoor.png', 'Mapy.com', 'Standard, Outdoor, Winter, Satellite'],
+      ['../../assets/osm/cyclosm.png', 'OpenStreetMap', 'Standard, CyclOSM, Cycle Map'],
+      ['../../assets/google/satellite.png', 'Google Maps', 'Standard, Satellite, Terrain, Hybrid'],
+      ['zwift-icon.png', 'Zwift', 'All twelve worlds'],
+    ],
+    shot: { src: '1-heatmap-mapy.jpg', x: 540, y: 110, w: 1000 },
+    callout: { src: '2-map-style-menu.jpg', crop: [18, 272, 405, 690], x: 500, y: 200, w: 270 },
+  },
+  2: {
+    layout: 'bottom',
+    title: 'Look around, <em>one click away</em>',
+    text: 'Click the map for Mapy.com Panorama or Google Street View in a floating window.',
+    shot: { src: '4-panorama.jpg', x: 120, y: -140, w: 1040 },
+    callout: { src: '4-panorama.jpg', crop: [1109, 379, 551, 649], x: 780, y: 96, w: 380 },
+  },
+  3: {
+    layout: 'top',
+    title: 'Every map, in <em>3D</em>',
+    text: 'Custom maps drape over Strava’s terrain, with the heatmap following every ridge.',
+    shot: { src: '5-terrain-3d.jpg', x: 120, y: 240, w: 1040 },
+  },
+  4: {
+    layout: 'side',
+    title: 'On your <em>activities</em> too',
+    text: 'Pick a map on any activity you open.',
+    list: [
+      [LAYERS, 'Every map', 'In the map style dropdown'],
+      [STAR, 'Favourite map', 'Star one and it loads everywhere'],
+      [ZWIFT, 'Zwift rides', 'Open on the Zwift map by themselves'],
+    ],
+    shot: { src: '6-activity.jpg', x: 500, y: 150, w: 1000 },
+    callout: { src: '6-activity.jpg', crop: [1240, 6, 436, 40], x: 420, y: 100, w: 640 },
+    // The activity page's map style dropdown, opened (native select).
+    image: { src: 'activity-picker.png', x: 735, y: 168, w: 180 },
+  },
+  5: {
+    layout: 'top',
+    title: 'Zwift’s worlds on the <em>real map</em>',
+    text: 'All twelve worlds where Zwift places them, with your virtual rides drawn on top.',
+    shot: { src: '3-zwift-worlds.jpg', x: 120, y: 240, w: 1000 },
+    callout: { src: '3-zwift-worlds.jpg', crop: [1323, 125, 341, 791], x: 895, y: 255, w: 300 },
+  },
+  // Firefox only: the Chrome Web Store takes five images.
+  6: {
+    layout: 'bottom',
+    title: 'Plan routes on <em>any map</em>',
+    text: 'Build routes in Strava’s route builder over Google Maps, Mapy.com or OpenStreetMap.',
+    shot: { src: '7-route-builder.jpg', x: 120, y: -140, w: 1040 },
+  },
+  // Chrome: activities and the route builder on one slide (it takes five images).
+  7: {
+    layout: 'side',
+    title: 'Routes and <em>activities</em> too',
+    text: 'Wherever Strava shows a map.',
+    list: [
+      [ROUTE, 'Route builder', 'Plan on Google Maps, Mapy.com or OSM'],
+      [BIKE, 'Activities', 'Switch the map on any activity'],
+      [STAR, 'Favourite map', 'Loads in both, every time'],
+    ],
+    // Activity map up top with its toolbar and the open dropdown; the route builder
+    // underneath, bleeding off the bottom.
+    shot: { src: '7-route-builder.jpg', x: 500, y: 360, w: 660 },
+    callout: [
+      { src: '6-activity.jpg', crop: [560, 52, 1120, 650], x: 740, y: 60, w: 500 },
+      { src: '6-activity.jpg', crop: [1240, 6, 436, 40], x: 846, y: 72, w: 380 },
+    ],
+    image: { src: 'activity-picker.png', x: 1032, y: 112, w: 165 },
+  },
+};
+
+const n = new URLSearchParams(location.search).get('s') || '1';
+const s = SLIDES[n];
+document.body.className = s.layout;
+
+const el = (tag, cls, parent = document.body) => {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  parent.appendChild(e);
+  return e;
+};
+
+const brand = el('div', 'brand');
+brand.innerHTML = '<img src="../../icons/icon.png" alt=""><span>More Maps<br>for Strava</span>';
+const copy = el('div', 'copy');
+el('h1', '', copy).innerHTML = s.title;
+el('p', '', copy).textContent = s.text;
+if (s.top) copy.style.top = s.top + 'px';
+if (s.list) {
+  const ul = el('ul', '', copy);
+  for (const [icon, name, detail] of s.list) {
+    const li = el('li', '', ul);
+    li.innerHTML = `<img src="${icon}" alt=""><b>${name}</b><span>${detail}</span>`;
+  }
+}
+
+// Main screenshot in a minimal browser frame; height runs off the canvas on purpose.
+const frame = el('div', 'frame');
+const h = s.shot.w * SRC_H / SRC_W;
+Object.assign(frame.style, { left: s.shot.x + 'px', top: s.shot.y + 'px', width: s.shot.w + 'px' });
+frame.innerHTML = '<div class="bar"><i></i><i></i><i></i></div>';
+const shot = el('div', 'shot', frame);
+Object.assign(shot.style, {
+  width: s.shot.w + 'px', height: h + 'px',
+  backgroundImage: `url(${SHOTS + s.shot.src})`, backgroundSize: '100% 100%',
+});
+
+// Optional zoomed-in crops of screenshots, floating over the main one (one or a list).
+for (const callout of [].concat(s.callout || [])) {
+  const { src, crop: [cx, cy, cw, ch], x, y, w } = callout;
+  const k = w / cw;
+  const c = el('div', 'callout');
+  Object.assign(c.style, {
+    left: x + 'px', top: y + 'px', width: w + 'px', height: ch * k + 'px',
+    backgroundImage: `url(${SHOTS + src})`,
+    backgroundSize: `${SRC_W * k}px ${SRC_H * k}px`,
+    backgroundPosition: `${-cx * k}px ${-cy * k}px`,
+  });
+}
+
+// Optional standalone image (e.g. an open dropdown), floating over everything.
+if (s.image) {
+  const img = el('img', 'callout');
+  img.src = s.image.src;
+  Object.assign(img.style, { left: s.image.x + 'px', top: s.image.y + 'px', width: s.image.w + 'px' });
+}
+</script>
+</body>
+</html>
