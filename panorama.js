@@ -1,7 +1,7 @@
 /**
  * More Maps for Strava - Panorama Module
  * 
- * Handles Mapy.cz/Google panorama integration via a Sandboxed Iframe.
+ * Handles Mapy.com/Google panorama integration via a Sandboxed Iframe.
  * Runs in the page context.
  */
 

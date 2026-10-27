@@ -54,7 +54,7 @@ Manifest V3 content scripts run in an isolated context and cannot access the pag
 
 3. **`panorama.js`** (also injected into page context) — handles panorama mode. Intercepts map clicks, renders a draggable/resizable floating window with an `<iframe>` pointing to `panorama.html`.
 
-4. **`panorama.html` + `panorama-sandbox.js`** — sandboxed page that loads the actual Mapy.cz or Google Street View SDK. Runs in a CSP sandbox; communicates back to the page via `postMessage`.
+4. **`panorama.html` + `panorama-sandbox.js`** — sandboxed page that loads the actual Mapy.com or Google Street View SDK. Runs in a CSP sandbox; communicates back to the page via `postMessage`.
 
 ### Message types (window.postMessage)
 

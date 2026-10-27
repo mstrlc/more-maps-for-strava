@@ -10,26 +10,26 @@
   </p>
 </div>
 
-A browser extension that puts more base maps, Zwift's worlds and a street-level panorama mode into Strava's maps. Swap Strava's map for Mapy.cz, OpenStreetMap or Google Maps on the global heatmap, the route builder and activity pages, while Strava's heatmap, routes and markers keep drawing on top.
+A browser extension that puts more base maps, Zwift's worlds and a street-level panorama mode into Strava's maps. Swap Strava's map for Mapy.com, OpenStreetMap or Google Maps on the global heatmap, the route builder and activity pages, while Strava's heatmap, routes and markers keep drawing on top.
 
 <p align="center">
-  <img src="store/screenshots/1-heatmap-mapy.jpg" alt="Global heatmap over Mapy.cz in Brno" width="400">
+  <img src="store/screenshots/1-heatmap-mapy.jpg" alt="Global heatmap over Mapy.com in Brno" width="400">
   <img src="store/screenshots/2-map-style-menu.jpg" alt="More Maps layers and map styling inside Strava's map style menu" width="400">
   <img src="store/screenshots/3-zwift-worlds.jpg" alt="Watopia on the global heatmap, with the Zwift Worlds panel open" width="400">
-  <img src="store/screenshots/4-panorama.jpg" alt="Mapy.cz Panorama window open on the heatmap" width="400">
-  <img src="store/screenshots/5-terrain-3d.jpg" alt="Mapy.cz Outdoor over Strava's 3D terrain around Triglav, with the hiking heatmap" width="400">
-  <img src="store/screenshots/6-activity.jpg" alt="Activity page on Mapy.cz Outdoor, set as the favorite map" width="400">
+  <img src="store/screenshots/4-panorama.jpg" alt="Mapy.com Panorama window open on the heatmap" width="400">
+  <img src="store/screenshots/5-terrain-3d.jpg" alt="Mapy.com Outdoor over Strava's 3D terrain around Triglav, with the hiking heatmap" width="400">
+  <img src="store/screenshots/6-activity.jpg" alt="Activity page on Mapy.com Outdoor, set as the favorite map" width="400">
 </p>
 
 ## Features
 
-- **Eleven extra base maps.** Mapy.cz (Standard, Outdoor, Winter, Satellite), OpenStreetMap (Standard, CyclOSM, Thunderforest Cycle Map) and Google Maps (Standard, Satellite, Terrain, Hybrid).
+- **Eleven extra base maps.** Mapy.com (Standard, Outdoor, Winter, Satellite), OpenStreetMap (Standard, CyclOSM, Thunderforest Cycle Map) and Google Maps (Standard, Satellite, Terrain, Hybrid).
 - **Built into Strava's own menus.** On the heatmap and route builder the maps appear in Strava's **Change map style** menu, grouped by provider in collapsible sections that remember their state. On activity pages they are extra groups in the map style dropdown.
 - **Strava stays on top.** The heatmap, routes, segments and markers keep rendering over the custom map, and picking any of Strava's own styles switches back. Strava's own road and rail lines are hidden underneath, so they don't double up with the custom map's. Turn on Strava's **3D** view and the custom map drapes over the terrain, heatmap included.
 - **Zwift worlds.** One layer draws all twelve Zwift worlds where Zwift places them on the real globe: Watopia, Makuri Islands, France and Crit City in the South Pacific, and London, New York, Richmond, Innsbruck, Bologna, Yorkshire, Paris and Scotland over the real cities. Your virtual rides in the heatmap line up with Zwift's roads. The **Zwift Worlds** button next to **More Maps Settings** lists every world, marks the one you're looking at, links to its routes on [ZwiftMap](https://zwiftmap.com) and jumps there in one click. Real terrain is flattened under the made-up islands, so their art isn't lifted by the islands underneath. Activities recorded in Zwift, yours or anyone else's, open on Zwift's map once you've allowed the extension to load Zwift's images (one click the first time). The rest is opt-in: a one-time card asks whether you ride Zwift, and the switch stays in **More Maps Settings**.
 - **Favorite map.** Star a map and it loads automatically whenever you open a Strava map.
 - **Map styling.** Brightness and saturation sliders for the custom maps, so a busy map can fade behind the heatmap. Strava's own layers are left untouched.
-- **Panorama mode.** Click anywhere on the heatmap or route builder to open street-level imagery from Mapy.cz Panorama (Czech Republic) or Google Street View (worldwide) in a draggable, resizable window. A marker on the map shows where the camera stands and turns as you look around.
+- **Panorama mode.** Click anywhere on the heatmap or route builder to open street-level imagery from Mapy.com Panorama (Czech Republic) or Google Street View (worldwide) in a draggable, resizable window. A marker on the map shows where the camera stands and turns as you look around.
 - **Your keys stay yours.** Providers that need an API key use your own free key, stored only in your browser's local storage.
 
 ## Install
@@ -45,7 +45,7 @@ To load it by hand instead, download `moremaps.zip` from [Releases](https://gith
 
 | Key | Needed for | Get one |
 | --- | --- | --- |
-| Mapy.cz (~1 min) | Mapy.cz maps and Mapy.cz Panorama | [developer.mapy.com](https://developer.mapy.com/account/projects): create an account and a project, then copy its API key |
+| Mapy.com (~1 min) | Mapy.com maps and Mapy.com Panorama | [developer.mapy.com](https://developer.mapy.com/account/projects): create an account and a project, then copy its API key |
 | Google Maps (~3 min) | Google Street View only; the Google maps work without a key | [Google Cloud Console](https://console.cloud.google.com/google/maps-apis/credentials): create a project, enable the **Maps JavaScript API** (Chrome, Edge) and the **Maps Embed API** (Firefox), then create an API key |
 | Thunderforest (~1 min) | Thunderforest Cycle Map | [manage.thunderforest.com](https://manage.thunderforest.com/): create an account and copy its API key |
 
@@ -102,8 +102,8 @@ background.js            Downloads Zwift's world maps (cdn.zwift.com allows no p
 zwift-permission.html    Asks for the optional cdn.zwift.com permission (with zwift-permission.js)
 panorama.js              Page script: panorama mode, the floating window and map marker
 panorama.html            Sandboxed page hosting the panorama viewers
-panorama-sandbox.js      Loads Mapy.cz Panorama or Google Street View inside the sandbox
-panorama-mapy-sdk.js     Bundled Mapy.cz panorama SDK
+panorama-sandbox.js      Loads Mapy.com Panorama or Google Street View inside the sandbox
+panorama-mapy-sdk.js     Bundled Mapy.com panorama SDK
 browser-polyfill.js      webextension-polyfill, so one codebase runs in Chrome and Firefox
 assets/                  Map thumbnails and store badges
 icons/                   Extension icons
