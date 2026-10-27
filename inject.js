@@ -532,13 +532,16 @@
             this.filterTimer = null;
             this.refreshQueued = false;    // a filter refresh is waiting for idle
             this.terrainFlat = false;      // terrain cache holds flattened Zwift tiles
+            this.userPicked = false;       // the user chose a map on this page
         }
 
         start() {
             this.setTileFilter(MoreMapsConfig.getTileFilter(), false);
             installTileInterceptor((url) => this.filterFor(url), (url) => this.rewriteUrl(url));
             window.addEventListener('message', this.handleMessage.bind(this));
-            if (this.currentMapType !== 'strava-default') this.coverMap();
+            // A Zwift activity may switch to the Zwift map once the page has
+            // loaded (see applyWhenReady), so keep Strava's map hidden until then.
+            if (this.currentMapType !== 'strava-default' || this.mayBeZwiftActivity()) this.coverMap();
             this.poller = setInterval(() => this.findEngine(), 2000);
             this.fastPoll();
         }
@@ -694,7 +697,9 @@
                 if (this.engine !== prevEngine) {
                     console.log('%cMore Maps: FATMAP engine CAPTURED', 'color: green', this.engine);
                     this.attachEngine(this.engine);
-                    if (this.currentMapType !== 'strava-default') {
+                    // On activity pages too, even without a favorite: a Zwift
+                    // activity switches to the Zwift map there.
+                    if (this.currentMapType !== 'strava-default' || /^\/activities\/\d+/.test(location.pathname)) {
                         this.applyWhenReady(this.engine);
                     }
                 }
@@ -819,11 +824,29 @@
                 setTimeout(() => {
                     if (this.pendingApply !== engine || this.engine !== engine) return;
                     this.pendingApply = null;
+                    this.pickZwiftForActivity();
                     if (this.currentMapType !== 'strava-default') this.applyMapStyle(this.currentMapType);
                     else this.uncoverMap(0);
                 }, ENGINE_SETTLE_MS);
             };
             whenVisible(check);
+        }
+
+        // On an activity recorded in Zwift, start on the Zwift map instead of the
+        // favorite, for anyone who has allowed the Zwift images, whether or not
+        // they turned on the rest of the Zwift features. Only before the user has
+        // picked a map: this also runs when Strava remounts the map later.
+        mayBeZwiftActivity() {
+            return MoreMapsConfig.zwiftImagesAllowed() && /^\/activities\/\d+/.test(location.pathname);
+        }
+
+        pickZwiftForActivity() {
+            const zwiftMap = MoreMapsConfig.ZWIFT_OPTIONS[0].id;
+            if (this.userPicked || this.currentMapType === zwiftMap) return;
+            if (!MoreMapsConfig.zwiftImagesAllowed() || !MoreMapsConfig.isZwiftActivityPage()) return;
+            this.currentMapType = zwiftMap;
+            // Let the map style dropdown show it.
+            window.postMessage({ type: 'MOREMAPS_ACTIVE_MAP', mapType: zwiftMap }, '*');
         }
 
         // --- Message handling ---
@@ -834,6 +857,7 @@
 
             if (data.type === 'MOREMAPS_MAP_SWITCH' || data.type === 'MOREMAPS_MAP_CLEAR') {
                 this.pendingApply = null;
+                this.userPicked = true;
                 this.uncoverMap(0);
             }
 

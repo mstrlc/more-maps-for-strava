@@ -29,7 +29,15 @@ if (typeof MoreMapsConfig !== 'undefined') {
             ZWIFT_FICTIONAL: 'Zwift islands',
             ZWIFT_REAL: 'Real-world cities',
             ZWIFT_HERE: 'You are here',
-            ZWIFT_ROUTES: 'Routes on ZwiftMap'
+            ZWIFT_ROUTES: 'Routes on ZwiftMap',
+            ZWIFT_PROMPT_TITLE: 'Do you ride Zwift?',
+            ZWIFT_PROMPT_TEXT: "More Maps can show Zwift's worlds on Strava's maps, from Watopia to London, right where your virtual rides are.",
+            ZWIFT_PROMPT_ENABLE: 'Show Zwift worlds',
+            ZWIFT_PROMPT_DISMISS: 'No thanks',
+            ZWIFT_PROMPT_CLOSE: 'Close',
+            ZWIFT_ACTIVITY_TITLE: 'Ridden in Zwift',
+            ZWIFT_ACTIVITY_TEXT: "This activity was recorded in Zwift. Show it on Zwift's map of the world it was ridden in?",
+            ZWIFT_ACTIVITY_ENABLE: 'Show Zwift map'
         },
         PANORAMA: {
             LOADING: 'Loading Panorama...',
@@ -58,6 +66,9 @@ if (typeof MoreMapsConfig !== 'undefined') {
             FAVORITE_LABEL: 'Favorite map',
             FAVORITE_EXPLAINER: 'Shown automatically whenever you open a Strava map. You can also set it with the star on a map in the map style menu, or next to the map dropdown on an activity page.',
             FAVORITE_STRAVA: "Strava's own map",
+            ZWIFT_LABEL: 'Zwift worlds',
+            ZWIFT_TOGGLE: 'Show Zwift worlds',
+            ZWIFT_EXPLAINER: 'Adds a Zwift Worlds button next to this one and a Zwift section to the map style menu.',
             API_LINKS: {
                 MAPY: 'https://developer.mapy.com/account/projects',
                 GOOGLE: 'https://console.cloud.google.com/google/maps-apis/credentials',

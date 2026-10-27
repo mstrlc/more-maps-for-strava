@@ -33,7 +33,7 @@ var MoreMapsConfig = {
 
     // One map layer that draws every Zwift world.
     ZWIFT_OPTIONS: [
-        { id: 'zwift-worlds', label: 'All Worlds', img: 'assets/zwift/zwift.svg' }
+        { id: 'zwift-worlds', label: 'Zwift', img: 'assets/zwift/zwift.svg' }
     ],
 
     // Where Zwift places each world in the real world: Zwift's own minimap image,
@@ -73,7 +73,11 @@ var MoreMapsConfig = {
         GOOGLE_SESSION_ROADMAP: 'moremaps_google_session_roadmap',
         GOOGLE_SESSION_SATELLITE: 'moremaps_google_session_satellite',
         GOOGLE_SESSION_TERRAIN: 'moremaps_google_session_terrain',
-        GOOGLE_SESSION_HYBRID: 'moremaps_google_session_hybrid'
+        GOOGLE_SESSION_HYBRID: 'moremaps_google_session_hybrid',
+        ZWIFT_ENABLED: 'moremaps_zwift_enabled',
+        ZWIFT_PROMPTED: 'moremaps_zwift_prompted',
+        ZWIFT_ACTIVITY_PROMPTED: 'moremaps_zwift_activity_prompted',
+        ZWIFT_IMAGES_ALLOWED: 'moremaps_zwift_images_allowed'
     }
 };
 
@@ -89,6 +93,28 @@ MoreMapsConfig.isZwiftMap = function (mapId) {
     return MoreMapsConfig.ZWIFT_OPTIONS.some(o => o.id === mapId);
 };
 
+// An activity page for something recorded in Zwift (a Virtual Ride or Run):
+// the device line under the stats reads "Zwift". Shared by the content script
+// and inject.js, so it relies on the DOM only.
+MoreMapsConfig.isZwiftActivityPage = function () {
+    if (!/^\/activities\/\d+/.test(location.pathname)) return false;
+    const device = document.querySelector('.device');
+    return !!device && /\bzwift\b/i.test(device.textContent);
+};
+
+// Whether the browser lets us download Zwift's world images (the optional
+// cdn.zwift.com permission). Only the extension can check that, so the content
+// script mirrors it here for inject.js; a stale value just means the Zwift map
+// falls back to plain OpenStreetMap until the next check.
+MoreMapsConfig.zwiftImagesAllowed = function () {
+    return localStorage.getItem(MoreMapsConfig.STORAGE_KEYS.ZWIFT_IMAGES_ALLOWED) === '1';
+};
+
+// The Zwift layer is opt-in (Settings, or the one-time "Do you ride Zwift?" card).
+MoreMapsConfig.isZwiftEnabled = function () {
+    return localStorage.getItem(MoreMapsConfig.STORAGE_KEYS.ZWIFT_ENABLED) === '1';
+};
+
 // The map to show on page load: the user's favorite, provided it still exists
 // and its API key is set (otherwise the carrier would render blank tiles).
 MoreMapsConfig.getFavoriteMap = function () {
@@ -99,6 +125,7 @@ MoreMapsConfig.getFavoriteMap = function () {
     }
     const key = MoreMapsConfig.requiredKeyFor(id);
     if (key && !localStorage.getItem(key)) return 'strava-default';
+    if (MoreMapsConfig.isZwiftMap(id) && !MoreMapsConfig.isZwiftEnabled()) return 'strava-default';
     return id;
 };
 

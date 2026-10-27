@@ -43,13 +43,19 @@ let isPanoramaActive = false;
 let panoramaButtonEl = null;
 
 // Our provider sections, in the order they're injected. Used by both the
-// route-planner popover and the activity-page <select>.
+// route-planner popover and the activity-page <select>. Read through
+// ourSections(), which leaves out Zwift unless it's enabled.
 const OUR_SECTIONS = [
     { title: 'Mapy.cz', options: MAP_OPTIONS },
     { title: 'OpenStreetMap', options: OSM_OPTIONS },
     { title: 'Google Maps', options: GOOGLE_OPTIONS },
-    { title: 'Zwift', options: ZWIFT_OPTIONS, extra: () => createZwiftWorldPicker() }
+    { title: 'Zwift', options: ZWIFT_OPTIONS, extra: () => createZwiftWorldPicker(), zwift: true }
 ];
+
+function ourSections() {
+    const zwift = MoreMapsConfig.isZwiftEnabled() || MoreMapsConfig.isZwiftActivityPage();
+    return OUR_SECTIONS.filter(s => zwift || !s.zwift);
+}
 
 // Strava ships two generations of this popover (the 2026-09 redesign moved the
 // option markup into its own `MapPreferenceOption_*` module and wrapped the
@@ -124,6 +130,10 @@ window.addEventListener('message', (event) => {
         relayZwiftImage(event.data.world);
     } else if (event.data.type === 'MOREMAPS_ZWIFT_HERE') {
         markZwiftHere(event.data.point);
+    } else if (event.data.type === 'MOREMAPS_ACTIVE_MAP') {
+        // inject.js picked the map itself (the Zwift map on a Zwift activity).
+        activeMapId = event.data.mapType;
+        reflectActiveMapInActivitySelect();
     }
 });
 
@@ -148,17 +158,31 @@ let resolveZwiftPermission = null;
 
 browser.runtime.onMessage.addListener((msg) => {
     if (msg && msg.type === 'zwift-permission-result' && resolveZwiftPermission) {
-        resolveZwiftPermission(!!msg.granted);
+        resolveZwiftPermission(rememberZwiftPermission(!!msg.granted));
         resolveZwiftPermission = null;
     }
 });
 
+// Mirror the permission into localStorage for inject.js (see
+// MoreMapsConfig.zwiftImagesAllowed), on every page load and on every answer.
+function rememberZwiftPermission(granted) {
+    if (granted) localStorage.setItem(STORAGE_KEYS.ZWIFT_IMAGES_ALLOWED, '1');
+    else localStorage.removeItem(STORAGE_KEYS.ZWIFT_IMAGES_ALLOWED);
+    return granted;
+}
+
+// Set once this page's first permission check has answered; until then the
+// mirrored value may be stale or missing.
+let zwiftPermissionKnown = false;
+
+function checkZwiftPermission() {
+    return browser.runtime.sendMessage({ type: 'zwift-permission-check' })
+        .then((granted) => rememberZwiftPermission(!!granted), () => false)
+        .finally(() => { zwiftPermissionKnown = true; });
+}
+
 async function ensureZwiftPermission() {
-    try {
-        if (await browser.runtime.sendMessage({ type: 'zwift-permission-check' })) return true;
-    } catch (e) {
-        return false;
-    }
+    if (await checkZwiftPermission()) return true;
     browser.runtime.sendMessage({ type: 'zwift-permission-request' });
     return new Promise((resolve) => { resolveZwiftPermission = resolve; });
 }
@@ -695,7 +719,7 @@ function injectIntoMenu(menu) {
     // redesign the sections sit inside a scroll area rather than directly in
     // the menu container, so insert relative to the section, not the menu.
     const anchorSection = stravaBase || menu.querySelector(SECTION_SEL);
-    const sections = OUR_SECTIONS.map(s => createSection(s.title, s.options, s.extra));
+    const sections = ourSections().map(s => createSection(s.title, s.options, s.extra));
     sections.push(createStylingSection());
     if (anchorSection) {
         anchorSection.after(...sections);
@@ -851,6 +875,7 @@ function createSettingsButton() {
 }
 
 function createZwiftButton() {
+    if (!MoreMapsConfig.isZwiftEnabled()) return;
     createNavButton({
         key: 'more-maps-zwift',
         after: 'more-maps-settings',
@@ -858,6 +883,138 @@ function createZwiftButton() {
         label: STRINGS.UI.ZWIFT_NAV_LABEL,
         onClick: toggleZwiftPanel
     });
+}
+
+// Turning Zwift off only hides its UI: the map shown right now stays until the
+// user picks another style (we must not switch the map type ourselves).
+function setZwiftEnabled(enabled) {
+    if (enabled === MoreMapsConfig.isZwiftEnabled()) return;
+    localStorage.setItem(STORAGE_KEYS.ZWIFT_ENABLED, enabled ? '1' : '0');
+    refreshActivitySelectGroups();
+    if (enabled) {
+        createZwiftButton();
+    } else {
+        closeZwiftPanel();
+        const item = document.querySelector('[data-key="more-maps-zwift"]');
+        if (item) item.remove();
+        if (MoreMapsConfig.isZwiftMap(favoriteMapId)) setFavorite(null);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Zwift offers: "Do you ride Zwift?" and "Ridden in Zwift"
+// ---------------------------------------------------------------------------
+// Two one-time cards. On Strava's maps, "Do you ride Zwift?" (under the More
+// Maps Settings button) turns on the Zwift features. On an activity recorded
+// in Zwift, "Ridden in Zwift" (under the map style dropdown) only shows that
+// ride on Zwift's map, for anyone, without turning the rest on. Each is asked
+// once; any answer, closing it included, is final.
+const ZWIFT_PROMPT_DELAY_MS = 1500;
+let zwiftPromptScheduled = false;
+
+function maybeShowZwiftPrompt() {
+    if (zwiftPromptScheduled || document.getElementById('moremaps-zwift-prompt')) return;
+    const settings = document.querySelector('[data-key="more-maps-settings"] button');
+    if (settings && !MoreMapsConfig.isZwiftEnabled() && !localStorage.getItem(STORAGE_KEYS.ZWIFT_PROMPTED)) {
+        schedule(showZwiftPrompt);
+        return;
+    }
+    // Only once the permission check has answered: with the images already
+    // allowed, the map switches to Zwift by itself and there's nothing to offer.
+    const sel = document.querySelector('select[class*="MapTypeControl--select"]');
+    if (sel && sel.querySelector('optgroup[data-mm]') && zwiftPermissionKnown && MoreMapsConfig.isZwiftActivityPage() &&
+        !MoreMapsConfig.zwiftImagesAllowed() && !localStorage.getItem(STORAGE_KEYS.ZWIFT_ACTIVITY_PROMPTED)) {
+        schedule(showZwiftActivityPrompt);
+    }
+
+    function schedule(show) {
+        zwiftPromptScheduled = true;
+        // Let the map load first, so the card doesn't land in the middle of it.
+        setTimeout(() => { zwiftPromptScheduled = false; show(); }, ZWIFT_PROMPT_DELAY_MS);
+    }
+}
+
+function showZwiftPrompt() {
+    const anchor = document.querySelector('[data-key="more-maps-settings"] button');
+    if (!anchor || localStorage.getItem(STORAGE_KEYS.ZWIFT_PROMPTED)) return;
+    showZwiftCard(anchor, {
+        title: STRINGS.UI.ZWIFT_PROMPT_TITLE,
+        text: STRINGS.UI.ZWIFT_PROMPT_TEXT,
+        accept: STRINGS.UI.ZWIFT_PROMPT_ENABLE
+    }, (accepted) => {
+        localStorage.setItem(STORAGE_KEYS.ZWIFT_PROMPTED, '1');
+        if (!accepted) return;
+        setZwiftEnabled(true);
+        // Straight to the worlds list, from the button that just appeared.
+        const btn = document.querySelector('[data-key="more-maps-zwift"] button');
+        if (btn) openZwiftPanel(btn);
+    });
+}
+
+function showZwiftActivityPrompt() {
+    const sel = document.querySelector('select[class*="MapTypeControl--select"]');
+    if (!sel || MoreMapsConfig.zwiftImagesAllowed() || localStorage.getItem(STORAGE_KEYS.ZWIFT_ACTIVITY_PROMPTED)) return;
+    showZwiftCard(sel, {
+        title: STRINGS.UI.ZWIFT_ACTIVITY_TITLE,
+        text: STRINGS.UI.ZWIFT_ACTIVITY_TEXT,
+        accept: STRINGS.UI.ZWIFT_ACTIVITY_ENABLE
+    }, (accepted) => {
+        localStorage.setItem(STORAGE_KEYS.ZWIFT_ACTIVITY_PROMPTED, '1');
+        if (!accepted) return;
+        // Asks for the cdn.zwift.com permission first; from then on Zwift
+        // activities open on Zwift's map by themselves (see inject.js).
+        triggerMapSwitch(ZWIFT_OPTIONS[0].id).then(reflectActiveMapInActivitySelect);
+    });
+}
+
+function showZwiftCard(anchor, copy, onAnswer) {
+    const card = document.createElement('div');
+    card.id = 'moremaps-zwift-prompt';
+    // Absolute, so it scrolls along with the (long) activity page.
+    const rect = anchor.getBoundingClientRect();
+    const left = Math.max(16, Math.min(rect.left, window.innerWidth - ZWIFT_PANEL_WIDTH - 16)) + window.scrollX;
+    card.style.cssText = `position:absolute; top:${rect.bottom + 8 + window.scrollY}px; left:${left}px; width:${ZWIFT_PANEL_WIDTH}px; max-width:calc(100vw - 32px); box-sizing:border-box; background:#fff; border-radius:8px; box-shadow:0 4px 24px rgba(0,0,0,0.2); z-index:10000; padding:16px; font-family:"Boathouse","Noto Sans","Segoe UI",sans-serif; color:#242428; user-select:none;`;
+
+    const header = document.createElement('div');
+    header.style.cssText = 'display:flex; align-items:center; gap:8px; margin-bottom:6px;';
+    const logo = document.createElement('img');
+    logo.src = browser.runtime.getURL('icons/zwift.svg');
+    logo.style.cssText = 'width:20px; height:20px;';
+    const title = document.createElement('div');
+    title.textContent = copy.title;
+    title.style.cssText = 'flex:1; font-size:16px; font-weight:700;';
+    const close = document.createElement('button');
+    close.type = 'button';
+    close.textContent = '×';
+    close.setAttribute('aria-label', STRINGS.UI.ZWIFT_PROMPT_CLOSE);
+    close.style.cssText = 'border:none; background:none; font-size:20px; line-height:1; color:#999; cursor:pointer; padding:0 2px;';
+    header.append(logo, title, close);
+
+    const text = document.createElement('div');
+    text.textContent = copy.text;
+    text.style.cssText = 'font-size:13px; color:#494950; line-height:1.45; margin-bottom:14px;';
+
+    const actions = document.createElement('div');
+    actions.style.cssText = 'display:flex; gap:8px; justify-content:flex-end;';
+    const dismiss = document.createElement('button');
+    dismiss.type = 'button';
+    dismiss.textContent = STRINGS.UI.ZWIFT_PROMPT_DISMISS;
+    dismiss.style.cssText = 'border:none; background:none; font:inherit; font-size:13px; font-weight:600; color:#6d6d78; cursor:pointer; padding:8px 12px;';
+    const accept = document.createElement('button');
+    accept.type = 'button';
+    accept.textContent = copy.accept;
+    accept.style.cssText = `border:none; border-radius:4px; background:${ORANGE}; color:#fff; font:inherit; font-size:13px; font-weight:600; cursor:pointer; padding:8px 14px;`;
+    actions.append(dismiss, accept);
+    card.append(header, text, actions);
+
+    const answer = (accepted) => {
+        card.remove();
+        onAnswer(accepted);
+    };
+    accept.addEventListener('click', () => answer(true));
+    dismiss.addEventListener('click', () => answer(false));
+    close.addEventListener('click', () => answer(false));
+    document.body.appendChild(card);
 }
 
 // ---------------------------------------------------------------------------
@@ -900,8 +1057,11 @@ function createZwiftWorldRow(world) {
     // Filled in by markZwiftHere() when the map is centred on this world.
     const here = document.createElement('span');
     here.dataset.mmZwiftHere = '';
-    here.textContent = STRINGS.UI.ZWIFT_HERE;
-    here.style.cssText = `display:none; font-size:11px; font-weight:600; color:${ORANGE}; white-space:nowrap;`;
+    here.title = STRINGS.UI.ZWIFT_HERE;
+    here.setAttribute('role', 'img');
+    here.setAttribute('aria-label', STRINGS.UI.ZWIFT_HERE);
+    here.style.cssText = `display:none; color:${ORANGE}; line-height:0;`;
+    here.innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M12 2a7 7 0 0 0-7 7c0 5.25 7 13 7 13s7-7.75 7-13a7 7 0 0 0-7-7zm0 9.5a2.5 2.5 0 1 1 0-5 2.5 2.5 0 0 1 0 5z"/></svg>';
 
     const routes = document.createElement('a');
     routes.href = ZWIFTMAP_URL + world.id;
@@ -926,7 +1086,7 @@ function openZwiftPanel(anchor) {
     const rect = anchor.getBoundingClientRect();
     const top = rect.bottom + 8;
     const left = Math.max(16, Math.min(rect.left, window.innerWidth - ZWIFT_PANEL_WIDTH - 16));
-    panel.style.cssText = `position:fixed; top:${top}px; left:${left}px; width:${ZWIFT_PANEL_WIDTH}px; max-width:calc(100vw - 32px); max-height:${Math.max(200, window.innerHeight - top - 16)}px; overflow-y:auto; background:#fff; border-radius:8px; box-shadow:0 4px 24px rgba(0,0,0,0.2); z-index:10000; padding:12px 0; font-family:"Boathouse","Noto Sans","Segoe UI",sans-serif;`;
+    panel.style.cssText = `position:fixed; top:${top}px; left:${left}px; width:${ZWIFT_PANEL_WIDTH}px; max-width:calc(100vw - 32px); max-height:${Math.max(200, window.innerHeight - top - 16)}px; overflow-y:auto; background:#fff; border-radius:8px; box-shadow:0 4px 24px rgba(0,0,0,0.2); z-index:10000; padding:12px 0; font-family:"Boathouse","Noto Sans","Segoe UI",sans-serif; user-select:none;`;
 
     const header = document.createElement('div');
     header.style.cssText = 'display:flex; align-items:center; gap:8px; padding:0 16px 4px;';
@@ -1007,7 +1167,7 @@ function injectIntoActivitySelect() {
         });
         sel.appendChild(g);
     };
-    OUR_SECTIONS.forEach(s => addGroup(s.title, s.options));
+    ourSections().forEach(s => addGroup(s.title, s.options));
 
     if (!sel.dataset.mmBound) {
         sel.dataset.mmBound = '1';
@@ -1026,7 +1186,21 @@ function injectIntoActivitySelect() {
         }, true);
     }
 
-    // Reflect an already-active custom provider in the select.
+    reflectActiveMapInActivitySelect();
+}
+
+// Re-add our groups to the activity page's select, e.g. after Zwift was toggled.
+function refreshActivitySelectGroups() {
+    const sel = document.querySelector('select[class*="MapTypeControl--select"]');
+    if (!sel) return;
+    sel.querySelectorAll('optgroup[data-mm]').forEach(g => g.remove());
+    injectIntoActivitySelect();
+}
+
+// Show an already-active custom provider in the activity page's select.
+function reflectActiveMapInActivitySelect() {
+    const sel = document.querySelector('select[class*="MapTypeControl--select"]');
+    if (!sel) return;
     if (activeMapId !== 'strava-default') {
         const val = 'mm:' + activeMapId;
         if ([...sel.options].some(o => o.value === val)) sel.value = val;
@@ -1099,12 +1273,35 @@ function onPanoramaClick() {
 // ---------------------------------------------------------------------------
 let settingsModalInjected = false;
 
+function fillFavoriteOptions(favSelect) {
+    favSelect.textContent = '';
+    const stravaOpt = document.createElement('option');
+    stravaOpt.value = '';
+    stravaOpt.textContent = STRINGS.SETTINGS.FAVORITE_STRAVA;
+    favSelect.appendChild(stravaOpt);
+    ourSections().forEach(s => {
+        const g = document.createElement('optgroup');
+        g.label = s.title;
+        s.options.forEach(opt => {
+            const o = document.createElement('option');
+            o.value = opt.id;
+            // "Zwift Zwift" reads oddly: skip the label when it repeats the title.
+            o.textContent = opt.label === s.title ? s.title : `${s.title} ${opt.label}`;
+            g.appendChild(o);
+        });
+        favSelect.appendChild(g);
+    });
+}
+
 function showSettingsModal(showInstructions = false, highlightKey = null) {
     injectSettingsModal();
     const modal = document.getElementById('moremaps-settings-modal');
     if (!modal) return;
     modal.style.display = 'flex';
+    const zwiftCheckbox = document.getElementById('moremaps-zwift-enabled');
+    if (zwiftCheckbox) zwiftCheckbox.checked = MoreMapsConfig.isZwiftEnabled();
     const fav = document.getElementById('moremaps-favorite-map');
+    if (fav) fillFavoriteOptions(fav);
     if (fav) fav.value = favoriteMapId || '';
     if (fav && fav.selectedIndex < 0) fav.value = '';
     if (showInstructions) {
@@ -1187,21 +1384,24 @@ function injectSettingsModal() {
     const favSelect = document.createElement('select');
     favSelect.id = 'moremaps-favorite-map';
     favSelect.style.cssText = 'width:100%; padding:10px 12px; border:1px solid #ddd; border-radius:6px; margin-bottom:16px; font-size:13px; background:white; color:#333; box-sizing:border-box; cursor:pointer;';
-    const stravaOpt = document.createElement('option');
-    stravaOpt.value = '';
-    stravaOpt.textContent = STRINGS.SETTINGS.FAVORITE_STRAVA;
-    favSelect.appendChild(stravaOpt);
-    OUR_SECTIONS.forEach(s => {
-        const g = document.createElement('optgroup');
-        g.label = s.title;
-        s.options.forEach(opt => {
-            const o = document.createElement('option');
-            o.value = opt.id;
-            o.textContent = `${s.title} ${opt.label}`;
-            g.appendChild(o);
-        });
-        favSelect.appendChild(g);
-    });
+    fillFavoriteOptions(favSelect);
+
+    // Zwift worlds (opt-in).
+    const zwiftLabel = document.createElement('div');
+    zwiftLabel.style.cssText = 'margin:8px 0 4px; font-weight:600; text-align:left; font-size:13px; color:#333;';
+    zwiftLabel.textContent = STRINGS.SETTINGS.ZWIFT_LABEL;
+    const zwiftToggle = document.createElement('label');
+    zwiftToggle.style.cssText = 'display:flex; align-items:center; gap:8px; font-size:13px; color:#333; cursor:pointer;';
+    const zwiftCheckbox = document.createElement('input');
+    zwiftCheckbox.type = 'checkbox';
+    zwiftCheckbox.id = 'moremaps-zwift-enabled';
+    zwiftCheckbox.style.cssText = `accent-color:${ORANGE}; width:16px; height:16px; margin:0; cursor:pointer;`;
+    const zwiftToggleText = document.createElement('span');
+    zwiftToggleText.textContent = STRINGS.SETTINGS.ZWIFT_TOGGLE;
+    zwiftToggle.append(zwiftCheckbox, zwiftToggleText);
+    const zwiftExplainer = document.createElement('p');
+    zwiftExplainer.style.cssText = 'font-size:12px; color:#666; margin:4px 0 16px 0; line-height:1.5;';
+    zwiftExplainer.textContent = STRINGS.SETTINGS.ZWIFT_EXPLAINER;
 
     const storageInfo = document.createElement('div');
     storageInfo.style.cssText = 'font-size:11px; color:#888; margin-bottom:24px; text-align:left;';
@@ -1214,7 +1414,10 @@ function injectSettingsModal() {
         localStorage.setItem(STORAGE_KEYS.MAPY_KEY, mapy.input.value.trim());
         localStorage.setItem(STORAGE_KEYS.GOOGLE_KEY, google.input.value.trim());
         localStorage.setItem(STORAGE_KEYS.TF_KEY, tf.input.value.trim());
-        setFavorite(favSelect.value);
+        setZwiftEnabled(zwiftCheckbox.checked);
+        // The dropdown still lists Zwift until it's next opened.
+        const zwiftOff = MoreMapsConfig.isZwiftMap(favSelect.value) && !MoreMapsConfig.isZwiftEnabled();
+        setFavorite(zwiftOff ? null : favSelect.value);
         modal.style.display = 'none';
         window.postMessage({ type: 'MOREMAPS_API_KEY_UPDATED' }, '*');
     };
@@ -1237,6 +1440,7 @@ function injectSettingsModal() {
     content.appendChild(google.label); content.appendChild(google.input);
     content.appendChild(tf.label); content.appendChild(tf.input);
     content.appendChild(favLabel); content.appendChild(favExplainer); content.appendChild(favSelect);
+    content.appendChild(zwiftLabel); content.appendChild(zwiftToggle); content.appendChild(zwiftExplainer);
     content.appendChild(storageInfo); content.appendChild(saveBtn); content.appendChild(resetBtn);
     modal.appendChild(content);
     modal.addEventListener('click', (e) => { if (e.target === modal) modal.style.display = 'none'; });
@@ -1253,17 +1457,21 @@ const observer = new MutationObserver(() => {
     createPanoramaButton();
     createSettingsButton();
     createZwiftButton();
+    maybeShowZwiftPrompt();
     injectIntoActivitySelect();
 });
 
 function init() {
     if (!document.body) { requestAnimationFrame(init); return; }
     observer.observe(document.body, { childList: true, subtree: true });
+    // The page may have settled before the answer arrives, so look again then.
+    checkZwiftPermission().then(maybeShowZwiftPrompt);
     const menu = document.querySelector('[class*="MapPreferences_menuContainer"]');
     if (menu) injectIntoMenu(menu);
     createPanoramaButton();
     createSettingsButton();
     createZwiftButton();
+    maybeShowZwiftPrompt();
     injectIntoActivitySelect();
 
     document.addEventListener('keydown', (e) => {
