@@ -105,7 +105,7 @@ panorama.html            Sandboxed page hosting the panorama viewers
 panorama-sandbox.js      Loads Mapy.cz Panorama or Google Street View inside the sandbox
 panorama-mapy-sdk.js     Bundled Mapy.cz panorama SDK
 browser-polyfill.js      webextension-polyfill, so one codebase runs in Chrome and Firefox
-assets/                  Map thumbnails, store badges and screenshots
+assets/                  Map thumbnails and store badges
 icons/                   Extension icons
 store/                   Store listing descriptions and screenshots
 .github/workflows/       Release workflow publishing to the Chrome Web Store and Firefox Add-ons
