@@ -1,46 +1,70 @@
-Enhance Strava's maps with layers from Mapy.com, OpenStreetMap, and Google Maps — on the global heatmap, the route builder, and activity detail pages. Click anywhere on the map to view street-level panoramas from Mapy.com or Google Street View.
+Put more maps into Strava. Swap Strava's base map for Mapy.com, OpenStreetMap or Google Maps on the global heatmap, the route builder and activity pages, while Strava's heatmap, routes and markers keep drawing on top. Ride Zwift's worlds on the real globe, see every map in 3D, and click the map for street-level panoramas.
 
 
 🗺️ **MAP LAYERS**
 
-Swap Strava's base map for a layer from any of these providers:
+Eleven extra base maps:
 
 - **Mapy.com** — Standard, Outdoor, Winter, Satellite
 - **OpenStreetMap** — Standard, CyclOSM, Cycle Map (Thunderforest)
 - **Google Maps** — Standard, Satellite, Terrain, Hybrid
 
-On the heatmap and route builder, pick a layer from Strava's map style menu. On an activity page, choose one from the map style dropdown above the map.
+On the heatmap and route builder they appear in Strava's own _Change map style_ menu, grouped by provider. On an activity page, pick one from the map style dropdown above the map. Picking any of Strava's own styles switches back.
+
+Strava's heatmap, routes, segments and markers stay on top of the custom map, and Strava's own road lines are hidden underneath so they don't double up. Turn on Strava's **3D** view and the custom map drapes over the terrain, heatmap included.
+
+
+⭐ **FAVORITE MAP**
+
+Star a map and it loads automatically whenever you open a Strava map: the heatmap, the route builder or an activity.
+
+
+🎨 **MAP STYLING**
+
+Brightness and saturation sliders for the custom maps, so a busy map can fade behind the heatmap. Strava's own layers are left untouched.
+
+
+🚴 **ZWIFT WORLDS**
+
+One layer draws all twelve Zwift worlds where Zwift places them on the real globe: Watopia, Makuri Islands, France and Crit City in the South Pacific, and London, New York, Richmond, Innsbruck, Bologna, Yorkshire, Paris and Scotland over the real cities. Your virtual rides in the heatmap line up with Zwift's roads.
+
+The _Zwift Worlds_ button lists every world, marks the one you're looking at, links to its routes on [ZwiftMap](https://zwiftmap.com) and jumps there in one click. Activities recorded in Zwift, yours or anyone else's, open on Zwift's map.
+
+Zwift worlds are opt-in: a one-time card asks whether you ride Zwift, and the switch stays in _More Maps Settings_. The first time, the extension asks for permission to download Zwift's world maps from `cdn.zwift.com`; nothing of Zwift's is bundled with the extension.
 
 
 👁️ **PANORAMA MODE**
 
-On the heatmap and route builder, click anywhere on the map to open a draggable, resizable panorama window with street-level imagery. Switch between Mapy.com and Google Street View using the control in the panorama window. Press **P** to toggle panorama mode on/off.
+On the heatmap and route builder, click anywhere on the map to open street-level imagery in a draggable, resizable window: Mapy.com Panorama (Czech Republic) or Google Street View (worldwide). A marker on the map shows where the camera stands and turns as you look around. Press **P** to turn panorama mode on or off.
 
 
 ⚙️ **SETUP**
 
-Some features require a free API key. Click the _More Maps Settings_ button in Strava's map navigation (next to "My Routes") to enter your keys. The extension will prompt you automatically the first time you use a feature that needs one. No credit card required. Free tiers cover all personal use.
+OpenStreetMap Standard, CyclOSM, the Google maps and the Zwift worlds work without any key. The rest need a free API key: click _More Maps Settings_ in Strava's map navigation (next to "My Routes") to enter them. The extension asks the first time you use a feature that needs one. No credit card required; the free tiers cover personal use.
 
-🔑 Keys are stored exclusively in your browser's local storage and never leave your device.
+🔑 Keys are stored only in your browser's local storage and never leave your device.
 
 
-**Mapy.com (~1 min)** — required for Mapy.com map layers and Mapy.com Panorama
+**Mapy.com (~1 min)** — for the Mapy.com maps and Mapy.com Panorama
 
 1. Go to [developer.mapy.com/account/projects](https://developer.mapy.com/account/projects)
 2. Create a free account and a new project
-3. Copy the API key and paste it into the extension settings
+3. Copy its API key into _More Maps Settings_
 
 
-**Google Maps (~3 min)** — required for Google map layers and Google Street View
+**Google Maps (~3 min)** — for Google Street View only
 
 1. Go to [console.cloud.google.com/google/maps-apis/credentials](https://console.cloud.google.com/google/maps-apis/credentials)
-2. Create a free account and a new project
-3. Enable the **Map Tiles API** and the **Street View Static API** for your project
-4. Create an API key, copy it, and paste it into the extension settings
+2. Create a project
+3. Enable the **Maps Embed API**
+4. Create an API key and copy it into _More Maps Settings_
 
 
-**Thunderforest (~1 min)** — required for the Cycle Map layer
+**Thunderforest (~1 min)** — for the Cycle Map
 
 1. Go to [manage.thunderforest.com](https://manage.thunderforest.com/)
 2. Create a free account
-3. Copy the API key and paste it into the extension settings
+3. Copy its API key into _More Maps Settings_
+
+
+More Maps for Strava is not affiliated with or endorsed by Strava, Zwift, Mapy.com or Google. [Source code on GitHub](https://github.com/mstrlc/more-maps-for-strava)
