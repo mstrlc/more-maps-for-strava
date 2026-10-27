@@ -31,6 +31,35 @@ var MoreMapsConfig = {
         { id: 'google-hybrid', label: 'Hybrid', img: 'assets/google/hybrid.png' }
     ],
 
+    // One map layer that draws every Zwift world.
+    ZWIFT_OPTIONS: [
+        { id: 'zwift-worlds', label: 'Zwift', img: 'assets/zwift/zwift.svg' }
+    ],
+
+    // Where Zwift places each world in the real world: Zwift's own minimap image,
+    // stretched (in Web Mercator) over these [north-west, south-east] corners.
+    // Bounds from the MIT-licensed zwift-data package, which zwiftmap.com uses.
+    // Images live under ZWIFT_IMAGE_BASE and are downloaded from Zwift by each
+    // user's browser, never bundled. Listed in the "Go to world" picker's order.
+    // `fictional` worlds sit on unrelated real terrain, which is flattened under them.
+    // `region` is where the world sits on the real map. Ids match zwiftmap.com's paths.
+    // `turnedClockwise` images are stored a quarter turn off north-up; inject.js turns them back.
+    ZWIFT_IMAGE_BASE: 'https://cdn.zwift.com/static/images/maps/',
+    ZWIFT_WORLDS: [
+        { id: 'watopia', name: 'Watopia', region: 'South Pacific', bounds: [[-11.62597, 166.87747], [-11.74087, 167.03255]], image: 'MiniMap_Watopia_2.png', fictional: true },
+        { id: 'makuri-islands', name: 'Makuri Islands', region: 'South Pacific', bounds: [[-10.73746, 165.76591], [-10.85234, 165.88222]], image: 'MiniMap_Japan.png', fictional: true, turnedClockwise: true },
+        { id: 'france', name: 'France', region: 'New Caledonia', bounds: [[-21.64155, 166.1384], [-21.7564, 166.26125]], image: 'MiniMap_France.png', fictional: true, turnedClockwise: true },
+        { id: 'crit-city', name: 'Crit City', region: 'South Pacific', bounds: [[-10.3657, 165.7824], [-10.4038, 165.8207]], image: 'MiniMap_CritCity.png', fictional: true },
+        { id: 'london', name: 'London', region: 'London, UK', bounds: [[51.5362, -0.1776], [51.4601, -0.0555]], image: 'MiniMap_London.png' },
+        { id: 'new-york', name: 'New York', region: 'New York, USA', bounds: [[40.817257, -74.022655], [40.587913, -73.922165]], image: 'MiniMap_NewYork_2.png' },
+        { id: 'richmond', name: 'Richmond', region: 'Richmond, Virginia, USA', bounds: [[37.5774, -77.48954], [37.5014, -77.394]], image: 'MiniMap_Richmond.png' },
+        { id: 'innsbruck', name: 'Innsbruck', region: 'Innsbruck, Austria', bounds: [[47.2947, 11.3501], [47.2055, 11.4822]], image: 'MiniMap_Innsbruck.png' },
+        { id: 'bologna', name: 'Bologna', region: 'Bologna, Italy', bounds: [[44.5308037, 11.26261748], [44.45463821, 11.36991729102076]], image: 'MiniMap_Bologna.png' },
+        { id: 'yorkshire', name: 'Yorkshire', region: 'Harrogate, UK', bounds: [[54.0254, -1.632], [53.9491, -1.5022]], image: 'MiniMap_Yorkshire.png' },
+        { id: 'paris', name: 'Paris', region: 'Paris, France', bounds: [[48.9058, 2.2561], [48.82945, 2.3722]], image: 'MiniMap_Champs.png', turnedClockwise: true },
+        { id: 'scotland', name: 'Scotland', region: 'Isle of Arran, UK', bounds: [[55.67595, -5.2802], [55.61845, -5.17798]], image: 'MiniMap_Scotland.png', turnedClockwise: true }
+    ],
+
     STORAGE_KEYS: {
         MAPY_KEY: 'moremaps_mapy_api_key',
         GOOGLE_KEY: 'moremaps_google_api_key',
@@ -44,7 +73,11 @@ var MoreMapsConfig = {
         GOOGLE_SESSION_ROADMAP: 'moremaps_google_session_roadmap',
         GOOGLE_SESSION_SATELLITE: 'moremaps_google_session_satellite',
         GOOGLE_SESSION_TERRAIN: 'moremaps_google_session_terrain',
-        GOOGLE_SESSION_HYBRID: 'moremaps_google_session_hybrid'
+        GOOGLE_SESSION_HYBRID: 'moremaps_google_session_hybrid',
+        ZWIFT_ENABLED: 'moremaps_zwift_enabled',
+        ZWIFT_PROMPTED: 'moremaps_zwift_prompted',
+        ZWIFT_ACTIVITY_PROMPTED: 'moremaps_zwift_activity_prompted',
+        ZWIFT_IMAGES_ALLOWED: 'moremaps_zwift_images_allowed'
     }
 };
 
@@ -56,16 +89,43 @@ MoreMapsConfig.requiredKeyFor = function (mapId) {
     return null;
 };
 
+MoreMapsConfig.isZwiftMap = function (mapId) {
+    return MoreMapsConfig.ZWIFT_OPTIONS.some(o => o.id === mapId);
+};
+
+// An activity page for something recorded in Zwift (a Virtual Ride or Run):
+// the device line under the stats reads "Zwift". Shared by the content script
+// and inject.js, so it relies on the DOM only.
+MoreMapsConfig.isZwiftActivityPage = function () {
+    if (!/^\/activities\/\d+/.test(location.pathname)) return false;
+    const device = document.querySelector('.device');
+    return !!device && /\bzwift\b/i.test(device.textContent);
+};
+
+// Whether the browser lets us download Zwift's world images (the optional
+// cdn.zwift.com permission). Only the extension can check that, so the content
+// script mirrors it here for inject.js; a stale value just means the Zwift map
+// falls back to plain OpenStreetMap until the next check.
+MoreMapsConfig.zwiftImagesAllowed = function () {
+    return localStorage.getItem(MoreMapsConfig.STORAGE_KEYS.ZWIFT_IMAGES_ALLOWED) === '1';
+};
+
+// The Zwift layer is opt-in (Settings, or the one-time "Do you ride Zwift?" card).
+MoreMapsConfig.isZwiftEnabled = function () {
+    return localStorage.getItem(MoreMapsConfig.STORAGE_KEYS.ZWIFT_ENABLED) === '1';
+};
+
 // The map to show on page load: the user's favorite, provided it still exists
 // and its API key is set (otherwise the carrier would render blank tiles).
 MoreMapsConfig.getFavoriteMap = function () {
-    const { STORAGE_KEYS, MAP_OPTIONS, OSM_OPTIONS, GOOGLE_OPTIONS } = MoreMapsConfig;
+    const { STORAGE_KEYS, MAP_OPTIONS, OSM_OPTIONS, GOOGLE_OPTIONS, ZWIFT_OPTIONS } = MoreMapsConfig;
     const id = localStorage.getItem(STORAGE_KEYS.FAVORITE_ID);
-    if (!id || ![...MAP_OPTIONS, ...OSM_OPTIONS, ...GOOGLE_OPTIONS].some(o => o.id === id)) {
+    if (!id || ![...MAP_OPTIONS, ...OSM_OPTIONS, ...GOOGLE_OPTIONS, ...ZWIFT_OPTIONS].some(o => o.id === id)) {
         return 'strava-default';
     }
     const key = MoreMapsConfig.requiredKeyFor(id);
     if (key && !localStorage.getItem(key)) return 'strava-default';
+    if (MoreMapsConfig.isZwiftMap(id) && !MoreMapsConfig.isZwiftEnabled()) return 'strava-default';
     return id;
 };
 

@@ -59,6 +59,10 @@
         },
         'google-hybrid': {
             url: 'https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}'
+        },
+        // Not a real server: renderZwiftTile() draws these tiles (see below).
+        'zwift-worlds': {
+            url: 'https://zwift.moremaps.invalid/{z}/{x}/{y}.png'
         }
     };
 
@@ -140,9 +144,8 @@
         }
 
         async download(url) {
-            const res = await fetch(url, { credentials: 'omit' });
-            if (!res.ok) throw new Error(`HTTP ${res.status}`); // errors aren't cached
-            const blob = await res.blob();
+            // Errors aren't cached.
+            const blob = ZWIFT_TILE_RE.test(url) ? await renderZwiftTile(url) : await fetchBlob(url);
             this.blobs.set(url, blob);
             this.bytes += blob.size;
             for (const [oldUrl, old] of this.blobs) {
@@ -154,7 +157,182 @@
         }
     }
 
+    async function fetchBlob(url) {
+        const res = await fetch(url, { credentials: 'omit' });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return res.blob();
+    }
+
     const tileCache = new TileCache(TILE_CACHE_MAX_BYTES);
+
+    // --- Zwift worlds ---
+    //
+    // Zwift publishes each world as one big minimap image, not as tiles. Like
+    // zwiftmap.com (a Leaflet image overlay), we stretch it over the world's
+    // real-world bounds in Web Mercator, and cut our own 256px tiles from it:
+    // the carrier template points at a fake host, and the tile interceptor
+    // renders those URLs here instead of downloading them. OpenStreetMap goes
+    // underneath, so the surroundings still show. A world's image is only
+    // downloaded once a tile shows it at a useful size.
+    const ZWIFT_TILE_RE = /^https:\/\/zwift\.moremaps\.invalid\/(\d+)\/(\d+)\/(\d+)\.png$/;
+    const ZWIFT_BASE_URL = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
+    const ZWIFT_IMAGE_TIMEOUT_MS = 30000;
+    // Worlds narrower than this on a tile are skipped: a few pixels of island
+    // isn't worth downloading a multi-megabyte image for.
+    const ZWIFT_MIN_DRAW_PX = 8;
+    const TILE_SIZE = 256;
+    // Screen margin (px) around a world when centring on it.
+    const ZWIFT_FLY_PADDING = { top: 40, right: 40, bottom: 40, left: 40 };
+
+    // Web Mercator, normalised to 0..1 across the world.
+    const mercX = (lon) => (lon + 180) / 360;
+    const mercY = (lat) => (1 - Math.log(Math.tan(Math.PI / 4 + lat * Math.PI / 360)) / Math.PI) / 2;
+
+    // Strava's terrain tiles: {STRAVA_TILE_SERVER_URL}/terrain/{quadkey}.hfz
+    const TERRAIN_TILE_RE = /\/terrain\/([0-3]+)\.hfz/;
+    const TERRAIN_CLEAR_DELAY_MS = 500;
+    // Open Pacific on the equator: Strava has no terrain there at any zoom.
+    const OCEAN_POINT = { lat: 0, lon: -140 };
+
+    function fromQuadkey(quadkey) {
+        let x = 0, y = 0;
+        for (let i = 0; i < quadkey.length; i++) {
+            const mask = 1 << (quadkey.length - 1 - i);
+            const digit = Number(quadkey[i]);
+            if (digit & 1) x |= mask;
+            if (digit & 2) y |= mask;
+        }
+        return { x, y };
+    }
+
+    function oceanQuadkey(z) {
+        const n = 2 ** z;
+        const x = Math.floor(mercX(OCEAN_POINT.lon) * n), y = Math.floor(mercY(OCEAN_POINT.lat) * n);
+        let quadkey = '';
+        for (let i = z - 1; i >= 0; i--) quadkey += ((x >> i) & 1) + 2 * ((y >> i) & 1);
+        return quadkey;
+    }
+
+    // A quarter turn anticlockwise: source (x, y) lands at (y, width - x).
+    function turnCounterClockwise(bitmap) {
+        const canvas = new OffscreenCanvas(bitmap.height, bitmap.width);
+        const ctx = canvas.getContext('2d');
+        ctx.translate(0, bitmap.width);
+        ctx.rotate(-Math.PI / 2);
+        ctx.drawImage(bitmap, 0, 0);
+        bitmap.close();
+        return canvas.transferToImageBitmap();
+    }
+
+    // world -> Promise<{ levels: ImageBitmap[] }>. levels[0] is full size, each
+    // next one half the previous: drawing the 8192px image straight into a few
+    // pixels at low zoom would alias badly.
+    const zwiftImages = new Map();
+
+    function loadZwiftImage(world) {
+        let pending = zwiftImages.get(world);
+        if (pending) return pending;
+        pending = new Promise((resolve, reject) => {
+            const timer = setTimeout(() => done({ error: 'Timed out' }), ZWIFT_IMAGE_TIMEOUT_MS);
+            const onMessage = (e) => {
+                if (e.source !== window || !e.data || e.data.type !== 'MOREMAPS_ZWIFT_IMAGE' || e.data.world !== world) return;
+                done(e.data);
+            };
+            const done = (msg) => {
+                clearTimeout(timer);
+                window.removeEventListener('message', onMessage);
+                if (msg.error) { reject(new Error(msg.error)); return; }
+                const binary = atob(msg.data);
+                const bytes = new Uint8Array(binary.length);
+                for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+                const config = MoreMapsConfig.ZWIFT_WORLDS.find(w => w.id === world);
+                createImageBitmap(new Blob([bytes], { type: 'image/png' }))
+                    .then(full => ({ levels: [config && config.turnedClockwise ? turnCounterClockwise(full) : full] }))
+                    .then(resolve, reject);
+            };
+            window.addEventListener('message', onMessage);
+            window.postMessage({ type: 'MOREMAPS_ZWIFT_IMAGE_REQUEST', world }, '*');
+        });
+        // Let a failed load (e.g. no permission yet) be retried later.
+        pending.catch(() => zwiftImages.delete(world));
+        zwiftImages.set(world, pending);
+        return pending;
+    }
+
+    // The smallest pyramid level that still has at least as many pixels as
+    // we're drawing, built on demand.
+    async function zwiftLevel(image, srcPerDest) {
+        let level = 0;
+        while (srcPerDest >= 2 ** (level + 1)) level++;
+        for (let i = 1; i <= level; i++) {
+            if (!image.levels[i]) {
+                const prev = await image.levels[i - 1];
+                image.levels[i] = createImageBitmap(prev, {
+                    resizeWidth: Math.max(1, prev.width >> 1),
+                    resizeHeight: Math.max(1, prev.height >> 1),
+                    resizeQuality: 'high'
+                });
+            }
+        }
+        const bitmap = await image.levels[level];
+        image.levels[level] = bitmap;
+        return bitmap;
+    }
+
+    // Where a world's whole image lands, in the pixels of tile (z, x, y).
+    function zwiftPlacement(bounds, z, x, y) {
+        const scale = TILE_SIZE * 2 ** z;
+        const [[north, west], [south, east]] = bounds;
+        return {
+            left: mercX(west) * scale - x * TILE_SIZE,
+            right: mercX(east) * scale - x * TILE_SIZE,
+            top: mercY(north) * scale - y * TILE_SIZE,
+            bottom: mercY(south) * scale - y * TILE_SIZE
+        };
+    }
+
+    async function drawZwiftWorld(ctx, image, p) {
+        // Only the part that overlaps the tile.
+        const dl = Math.max(p.left, 0), dr = Math.min(p.right, TILE_SIZE);
+        const dt = Math.max(p.top, 0), db = Math.min(p.bottom, TILE_SIZE);
+        const width = p.right - p.left, height = p.bottom - p.top;
+        const bitmap = await zwiftLevel(image, image.levels[0].width / width);
+        const kx = bitmap.width / width, ky = bitmap.height / height;
+        ctx.drawImage(bitmap,
+            (dl - p.left) * kx, (dt - p.top) * ky, (dr - dl) * kx, (db - dt) * ky,
+            dl, dt, dr - dl, db - dt);
+    }
+
+    async function renderZwiftTile(url) {
+        const [z, x, y] = url.match(ZWIFT_TILE_RE).slice(1).map(Number);
+        const worlds = MoreMapsConfig.ZWIFT_WORLDS
+            .map(world => ({ world, p: zwiftPlacement(world.bounds, z, x, y) }))
+            .filter(({ p }) => p.right > 0 && p.left < TILE_SIZE && p.bottom > 0 && p.top < TILE_SIZE &&
+                p.right - p.left >= ZWIFT_MIN_DRAW_PX);
+        const baseUrl = ZWIFT_BASE_URL.replace('{z}', z).replace('{x}', x).replace('{y}', y);
+        const [baseBlob, ...images] = await Promise.all([
+            fetchBlob(baseUrl).catch(() => null),
+            ...worlds.map(({ world }) => loadZwiftImage(world.id).catch((e) => {
+                console.warn(`More Maps: Zwift image for ${world.name} unavailable`, e.message);
+                return null;
+            }))
+        ]);
+        if (!images.some(Boolean)) {
+            // Nothing of Zwift's to draw here: the plain OpenStreetMap tile.
+            if (!baseBlob) throw new Error('No Zwift tile content');
+            return baseBlob;
+        }
+        const base = baseBlob && await createImageBitmap(baseBlob).catch(() => null);
+
+        const canvas = new OffscreenCanvas(TILE_SIZE, TILE_SIZE);
+        const ctx = canvas.getContext('2d');
+        ctx.imageSmoothingQuality = 'high';
+        if (base) { ctx.drawImage(base, 0, 0, TILE_SIZE, TILE_SIZE); base.close(); }
+        for (let i = 0; i < worlds.length; i++) {
+            if (images[i]) await drawZwiftWorld(ctx, images[i], worlds[i].p);
+        }
+        return canvas.convertToBlob({ type: 'image/png' });
+    }
 
     /**
      * Recolour RGBA pixel data in place.
@@ -254,14 +432,18 @@
     const tileRequests = { inFlight: 0, lastActivity: 0 };
 
     // filterFor(url) returns the filter to apply to that request, or null to
-    // let it through untouched.
-    function installTileInterceptor(filterFor) {
+    // let it through untouched. rewriteUrl(url) returns a URL to request
+    // instead, or null.
+    function installTileInterceptor(filterFor, rewriteUrl) {
         const proto = XMLHttpRequest.prototype;
         const { open, send, setRequestHeader, abort } = proto;
 
         proto.open = function () {
-            this._mm = { args: Array.from(arguments), headers: [], pending: false };
-            return open.apply(this, arguments);
+            const args = Array.from(arguments);
+            const rewritten = args.length > 1 && rewriteUrl(String(args[1]));
+            if (rewritten) args[1] = rewritten;
+            this._mm = { args, headers: [], pending: false };
+            return open.apply(this, args);
         };
         proto.setRequestHeader = function (name, value) {
             if (this._mm) this._mm.headers.push([name, value]);
@@ -349,13 +531,17 @@
             this.tileFilter = null;        // brightness/saturation, null when neutral
             this.filterTimer = null;
             this.refreshQueued = false;    // a filter refresh is waiting for idle
+            this.terrainFlat = false;      // terrain cache holds flattened Zwift tiles
+            this.userPicked = false;       // the user chose a map on this page
         }
 
         start() {
             this.setTileFilter(MoreMapsConfig.getTileFilter(), false);
-            installTileInterceptor((url) => this.filterFor(url));
+            installTileInterceptor((url) => this.filterFor(url), (url) => this.rewriteUrl(url));
             window.addEventListener('message', this.handleMessage.bind(this));
-            if (this.currentMapType !== 'strava-default') this.coverMap();
+            // A Zwift activity may switch to the Zwift map once the page has
+            // loaded (see applyWhenReady), so keep Strava's map hidden until then.
+            if (this.currentMapType !== 'strava-default' || this.mayBeZwiftActivity()) this.coverMap();
             this.poller = setInterval(() => this.findEngine(), 2000);
             this.fastPoll();
         }
@@ -511,7 +697,9 @@
                 if (this.engine !== prevEngine) {
                     console.log('%cMore Maps: FATMAP engine CAPTURED', 'color: green', this.engine);
                     this.attachEngine(this.engine);
-                    if (this.currentMapType !== 'strava-default') {
+                    // On activity pages too, even without a favorite: a Zwift
+                    // activity switches to the Zwift map there.
+                    if (this.currentMapType !== 'strava-default' || /^\/activities\/\d+/.test(location.pathname)) {
                         this.applyWhenReady(this.engine);
                     }
                 }
@@ -636,11 +824,29 @@
                 setTimeout(() => {
                     if (this.pendingApply !== engine || this.engine !== engine) return;
                     this.pendingApply = null;
+                    this.pickZwiftForActivity();
                     if (this.currentMapType !== 'strava-default') this.applyMapStyle(this.currentMapType);
                     else this.uncoverMap(0);
                 }, ENGINE_SETTLE_MS);
             };
             whenVisible(check);
+        }
+
+        // On an activity recorded in Zwift, start on the Zwift map instead of the
+        // favorite, for anyone who has allowed the Zwift images, whether or not
+        // they turned on the rest of the Zwift features. Only before the user has
+        // picked a map: this also runs when Strava remounts the map later.
+        mayBeZwiftActivity() {
+            return MoreMapsConfig.zwiftImagesAllowed() && /^\/activities\/\d+/.test(location.pathname);
+        }
+
+        pickZwiftForActivity() {
+            const zwiftMap = MoreMapsConfig.ZWIFT_OPTIONS[0].id;
+            if (this.userPicked || this.currentMapType === zwiftMap) return;
+            if (!MoreMapsConfig.zwiftImagesAllowed() || !MoreMapsConfig.isZwiftActivityPage()) return;
+            this.currentMapType = zwiftMap;
+            // Let the map style dropdown show it.
+            window.postMessage({ type: 'MOREMAPS_ACTIVE_MAP', mapType: zwiftMap }, '*');
         }
 
         // --- Message handling ---
@@ -651,6 +857,7 @@
 
             if (data.type === 'MOREMAPS_MAP_SWITCH' || data.type === 'MOREMAPS_MAP_CLEAR') {
                 this.pendingApply = null;
+                this.userPicked = true;
                 this.uncoverMap(0);
             }
 
@@ -674,6 +881,34 @@
                 this.handlePanoramaToggle(data.active);
             } else if (data.type === 'MOREMAPS_TILE_FILTER') {
                 this.setTileFilter(data.filter, true);
+            } else if (data.type === 'MOREMAPS_ZWIFT_FLY') {
+                this.flyToZwiftWorld(data.world);
+            } else if (data.type === 'MOREMAPS_ZWIFT_WHERE') {
+                this.findEngine(true);
+                let point = null;
+                try {
+                    const { latitude, longitude } = this.engine.getCamera().getTarget().lookAtPoint;
+                    point = { latitude, longitude };
+                } catch (e) {}
+                window.postMessage({ type: 'MOREMAPS_ZWIFT_HERE', point }, '*');
+            }
+        }
+
+        // Centre the camera on a Zwift world, framing its whole image. Camera
+        // moves are safe at any time (Strava's own search does the same), so this
+        // doesn't wait for tiles to settle. Instant: the jump is often halfway
+        // around the globe, and an animation that short is just a flicker.
+        flyToZwiftWorld(id) {
+            const world = MoreMapsConfig.ZWIFT_WORLDS.find(w => w.id === id);
+            this.findEngine(true);
+            if (!world || !this.isEngine(this.engine)) return;
+            const [[north, west], [south, east]] = world.bounds;
+            try {
+                this.engine.getCamera().flyToBounds(
+                    { southWestCorner: { latitude: south, longitude: west }, northEastCorner: { latitude: north, longitude: east } },
+                    0, 0, 0, ZWIFT_FLY_PADDING, undefined);
+            } catch (e) {
+                console.error('More Maps: error flying to Zwift world', e);
             }
         }
 
@@ -763,19 +998,69 @@
                         // Template first, so the carrier never shows Strava's winter tiles.
                         ts.setTileSourceTemplateUrl(CARRIER_SOURCE, url);
                     }
+                    this.setStravaBaseShown(false);
                     if (!this.carrierActive) {
                         this.engine.setMapType(CARRIER_MAP_TYPE);
                         this.carrierActive = true;
                     }
                     // The cache is keyed by source, not URL: another provider's
                     // tiles would linger if the reset's cache clear didn't run.
-                    if (this.cachedUrl && this.cachedUrl !== url) this.clearTileCache();
+                    const cleared = this.cachedUrl && this.cachedUrl !== url;
+                    if (cleared) this.clearTileCache();
                     this.cachedUrl = url;
+                    this.syncTerrainCache(url, cleared);
                     this.uncoverMap(REVEAL_DELAY_MS);
                 });
             } catch (e) {
                 console.error('More Maps: error applying tiles', e);
             }
+        }
+
+        // The carrier map type is a hybrid: Strava draws its own vector roads,
+        // railways and paths over the raster. Over Mapy/OSM they roughly line up,
+        // but over Zwift's worlds (and satellite) they're stray lines, so hide
+        // them while one of our maps is shown. The heatmap is unaffected.
+        setStravaBaseShown(show) {
+            try { this.engine.getContent().getOsmFilter().setShow(show); } catch (e) {}
+        }
+
+        // --- Flat terrain under fictional Zwift worlds ---
+        //
+        // Watopia & co. sit on real islands, whose elevation would lift and shade
+        // Zwift's art (most visible in 3D). Strava's terrain server has no tiles
+        // for open ocean: it answers 404 and the engine renders sea level. So
+        // while the Zwift map is shown, terrain tiles under a fictional world are
+        // redirected to an ocean tile — at every zoom: where a fine tile is
+        // missing the engine falls back to the coarser parent, which would bring
+        // the islands back. Coarse tiles span huge areas, but anywhere else the
+        // engine soon loads that area's own (untouched) fine tiles.
+        rewriteUrl(url) {
+            if (!this.desiredUrl || !MoreMapsConfig.isZwiftMap(this.currentMapType)) return null;
+            const m = url.match(TERRAIN_TILE_RE);
+            if (!m) return null;
+            const quadkey = m[1];
+            const z = quadkey.length;
+            const { x, y } = fromQuadkey(quadkey);
+            const n = 2 ** z;
+            const flat = MoreMapsConfig.ZWIFT_WORLDS.some(({ fictional, bounds: [[north, west], [south, east]] }) =>
+                fictional && mercX(east) * n > x && mercX(west) * n < x + 1 && mercY(south) * n > y && mercY(north) * n < y + 1);
+            if (!flat) return null;
+            return url.replace(TERRAIN_TILE_RE, (match) => match.replace(quadkey, oceanQuadkey(z)));
+        }
+
+        // Terrain cached before switching to (or away from) the Zwift map still
+        // has the other elevation. A switch from another provider already cleared
+        // the cache; otherwise clear it once the switch's own tiles have loaded,
+        // never right after setMapType (that crashes a freshly loaded engine).
+        syncTerrainCache(url, cleared) {
+            const flat = MoreMapsConfig.isZwiftMap(this.currentMapType);
+            if (cleared) { this.terrainFlat = flat; return; }
+            if (flat === this.terrainFlat) return;
+            setTimeout(() => this.whenTilesIdle(() => {
+                if (this.desiredUrl !== url || this.terrainFlat === flat) return;
+                this.clearTileCache();
+                this.terrainFlat = flat;
+            }), TERRAIN_CLEAR_DELAY_MS);
         }
 
         // Cleanup when the user clicks a native Strava style button. Strava's own
@@ -791,11 +1076,15 @@
             this.whenTilesIdle(() => {
                 if (this.desiredUrl !== null) return; // back on a custom map already
                 this.carrierActive = this.stravaStyle() === 'winter';
+                this.setStravaBaseShown(true);
                 const tsApi = this.getTileSourcesApi();
                 if (tsApi && this.savedCarrierUrl) {
                     tsApi.setTileSourceTemplateUrl(CARRIER_SOURCE, this.savedCarrierUrl);
                 }
-                if (this.cachedUrl) this.clearTileCache();
+                if (this.cachedUrl) {
+                    this.clearTileCache();
+                    this.terrainFlat = false;
+                }
                 // On Winter, Strava's own tiles now fill the carrier cache.
                 this.cachedUrl = this.carrierActive ? STRAVA_CARRIER_TILES : null;
             });

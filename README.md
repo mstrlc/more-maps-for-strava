@@ -1,153 +1,114 @@
-# <img src="icons/icon_orange.svg" width="24" height="24" alt="More Maps for Strava icon" />&ensp;More Maps for Strava
+<div align="center">
+  <img src="icons/icon_orange.svg" width="96" height="96" alt="More Maps for Strava icon">
+  <h1>More Maps for Strava</h1>
+  <p>
+    <a href="https://chromewebstore.google.com/detail/more-maps-for-strava/adpgjdeigiekdjnjionhhblgfpmkionl">Chrome Web Store</a>
+    ·
+    <a href="https://addons.mozilla.org/en-US/firefox/addon/more-maps-for-strava/">Firefox Add-ons</a>
+    ·
+    <a href="https://github.com/mstrlc/more-maps-for-strava/releases/latest">Download</a>
+  </p>
+</div>
 
-A browser extension that adds additional map layers and a panorama mode to Strava's maps — the global heatmap, the route builder, and activity detail pages.
+A browser extension that puts more base maps, Zwift's worlds and a street-level panorama mode into Strava's maps. Swap Strava's map for Mapy.cz, OpenStreetMap or Google Maps on the global heatmap, the route builder and activity pages, while Strava's heatmap, routes and markers keep drawing on top.
 
 <p align="center">
-  <a href="https://chromewebstore.google.com/detail/more-maps-for-strava/adpgjdeigiekdjnjionhhblgfpmkionl">
-    <img src="assets/chrome-badge.png" alt="Available in the Chrome Web Store" height="58" />
-  </a>
-  &nbsp;
-  <a href="https://addons.mozilla.org/en-US/firefox/addon/more-maps-for-strava/">
-    <img src="assets/firefox-badge.svg" alt="Get the Add-on for Firefox" height="58" />
-  </a>
+  <img src="assets/screenshots/heatmap.jpeg" alt="Global heatmap over Mapy.cz Outdoor, with the panorama window open" height="300">
+  <img src="assets/screenshots/routeplanner.jpeg" alt="Route builder with Google Street View" height="300">
+  <img src="assets/screenshots/layers.jpeg" alt="More Maps layers inside Strava's map style menu" height="300">
 </p>
-
-## Screenshots
-
-<table align="center">
-  <tr>
-    <td align="center"><img src="assets/screenshots/heatmap.jpeg" alt="Heatmap with custom layers" height="400" /></td>
-    <td align="center"><img src="assets/screenshots/routeplanner.jpeg" alt="Route planner with panorama" height="400" /></td>
-    <td align="center"><img src="assets/screenshots/layers.jpeg" alt="Available map layers" height="400" /></td>
-  </tr>
-  <tr>
-    <td align="center"><sub>Heatmap with Mapy.cz Outdoor and Panorama</sub></td>
-    <td align="center"><sub>Route Builder with Google Streetview</sub></td>
-    <td align="center"><sub>Available Map Layers</sub></td>
-  </tr>
-</table>
 
 ## Features
 
-### 🗺️ Additional Map Layers
+- **Eleven extra base maps.** Mapy.cz (Standard, Outdoor, Winter, Satellite), OpenStreetMap (Standard, CyclOSM, Thunderforest Cycle Map) and Google Maps (Standard, Satellite, Terrain, Hybrid).
+- **Built into Strava's own menus.** On the heatmap and route builder the maps appear in Strava's **Change map style** menu, grouped by provider in collapsible sections that remember their state. On activity pages they are extra groups in the map style dropdown.
+- **Strava stays on top.** The heatmap, routes, segments and markers keep rendering over the custom map, and picking any of Strava's own styles switches back. Strava's own road and rail lines are hidden underneath, so they don't double up with the custom map's.
+- **Zwift worlds.** One layer draws all twelve Zwift worlds where Zwift places them on the real globe: Watopia, Makuri Islands, France and Crit City in the South Pacific, and London, New York, Richmond, Innsbruck, Bologna, Yorkshire, Paris and Scotland over the real cities. Your virtual rides in the heatmap line up with Zwift's roads. The **Zwift Worlds** button next to **More Maps Settings** lists every world, marks the one you're looking at, links to its routes on [ZwiftMap](https://zwiftmap.com) and jumps there in one click. Real terrain is flattened under the made-up islands, so their art isn't lifted by the islands underneath. Activities recorded in Zwift, yours or anyone else's, open on Zwift's map once you've allowed the extension to load Zwift's images (one click the first time). The rest is opt-in: a one-time card asks whether you ride Zwift, and the switch stays in **More Maps Settings**.
+- **Favorite map.** Star a map and it loads automatically whenever you open a Strava map.
+- **Map styling.** Brightness and saturation sliders for the custom maps, so a busy map can fade behind the heatmap. Strava's own layers are left untouched.
+- **Panorama mode.** Click anywhere on the heatmap or route builder to open street-level imagery from Mapy.cz Panorama (Czech Republic) or Google Street View (worldwide) in a draggable, resizable window. A marker on the map shows where the camera stands and turns as you look around.
+- **Your keys stay yours.** Providers that need an API key use your own free key, stored only in your browser's local storage.
 
-Swap Strava's base map for layers from multiple providers, on the heatmap, the route builder, and activity detail pages:
+## Install
 
-- **Mapy.cz** - Standard, Outdoor, Winter, and Satellite views
-- **OpenStreetMap** - Standard, CyclOSM, and Thunderforest Cycle Map
-- **Google Maps** - Standard, Satellite, Terrain, and Hybrid views
+Install from the [Chrome Web Store](https://chromewebstore.google.com/detail/more-maps-for-strava/adpgjdeigiekdjnjionhhblgfpmkionl) (Chrome, Edge and other Chromium browsers) or from [Firefox Add-ons](https://addons.mozilla.org/en-US/firefox/addon/more-maps-for-strava/).
 
-On the heatmap and route builder, the layers are added straight into Strava's own **Change map style** popover, grouped by provider. The provider groups are collapsible — click a group header to fold it — and the state is remembered between visits, so the popover stays compact. On an activity page, the layers show up as extra groups in the map style dropdown above the map.
+To load it by hand instead, download `moremaps.zip` from [Releases](https://github.com/mstrlc/more-maps-for-strava/releases/latest) and unzip it. In Chrome or Edge, open `chrome://extensions`, turn on **Developer mode**, click **Load unpacked** and pick the unzipped folder. In Firefox, open `about:debugging#/runtime/this-firefox`, click **Load Temporary Add-on** and pick its `manifest.json`.
 
-Strava's own overlays (heatmap, routes, markers, labels) keep rendering on top of the custom base layer. Switching back to any of Strava's own styles removes the override.
+## Requirements
 
-### 👁️ Panorama Mode
+- Chrome, Edge or another Chromium browser, or Firefox 109 or later
+- Free API keys for the providers that need one. Enter them under **More Maps Settings** in Strava's map navigation, next to **My Routes**. The free tiers need no credit card and cover personal use.
 
-On the heatmap and route builder, click anywhere on the map to view street-level imagery in a draggable, resizable window:
+| Key | Needed for | Get one |
+| --- | --- | --- |
+| Mapy.cz (~1 min) | Mapy.cz maps and Mapy.cz Panorama | [developer.mapy.com](https://developer.mapy.com/account/projects): create an account and a project, then copy its API key |
+| Google Maps (~3 min) | Google Street View only; the Google maps work without a key | [Google Cloud Console](https://console.cloud.google.com/google/maps-apis/credentials): create a project, enable the **Maps JavaScript API** (Chrome, Edge) and the **Maps Embed API** (Firefox), then create an API key |
+| Thunderforest (~1 min) | Thunderforest Cycle Map | [manage.thunderforest.com](https://manage.thunderforest.com/): create an account and copy its API key |
 
-- **Mapy.cz Panorama** - Local coverage in Czech Republic
-- **Google Street View** - Global coverage
+OpenStreetMap Standard and CyclOSM need no key, and neither do the Zwift worlds. The first time you open them, the extension asks for permission to download Zwift's world maps from `cdn.zwift.com`; nothing of Zwift's is bundled with the extension.
 
-A marker on the map shows where the camera stands and which way it looks — it rotates as you turn and moves along as you walk down a street.
+## Building
 
-Switch between providers with the segmented control in the panorama window, or the dropdown next to the panorama toggle button on the map. Press **`P`** to toggle panorama mode on/off.
+```bash
+git clone git@github.com:mstrlc/more-maps-for-strava.git
+```
 
-## Installation
+```bash
+cd more-maps-for-strava && npm install
+```
 
-### Chrome / Edge
+```bash
+npm run build
+```
 
-<a href="https://chromewebstore.google.com/detail/more-maps-for-strava/adpgjdeigiekdjnjionhhblgfpmkionl">
-  <img src="assets/chrome-badge.png" alt="Available in the Chrome Web Store" height="58" />
-</a>
+The build is a plain file copy into `dist/`, with no bundler. Load `dist/` as an unpacked extension (or `dist/manifest.json` in Firefox) as described under [Install](#install), and reload it there after each build. `npm run zip` builds and packages `moremaps.zip`.
 
-### Firefox
-
-<a href="https://addons.mozilla.org/en-US/firefox/addon/more-maps-for-strava/">
-  <img src="assets/firefox-badge.svg" alt="Get the Add-on for Firefox" height="58" />
-</a>
-
-### Manual
-
-<details>
-<summary>Load unpacked from a release</summary>
-
-#### Firefox
-
-1. Download the latest release
-2. Navigate to `about:debugging#/runtime/this-firefox`
-3. Click "Load Temporary Add-on" and select the `manifest.json` file
-
-#### Chrome / Edge
-
-1. Download the latest release
-2. Navigate to `chrome://extensions` (or `edge://extensions`)
-3. Enable "Developer mode"
-4. Click "Load unpacked" and select the extension folder
-
-</details>
-
-## Configuration
-
-### API Keys
-
-To keep this extension free, each user provides their own API keys. Providers charge per request, so the key needs to be linked to your account. The free tiers are generous — **no credit card required**, and **personal use won't cost you anything**.
-
-Click the **More Maps Settings** button in Strava's map navigation (next to "My Routes") to enter your keys.
-
-> **Privacy note**: API keys are stored exclusively in your browser's local storage and never leave your machine.
-
-#### Mapy.cz (~1 min)
-
-Required for: Mapy.cz map layers and Mapy.cz Panorama.
-
-1. Go to [developer.mapy.com/account/projects](https://developer.mapy.com/account/projects)
-2. Create a free account and a new project
-3. Copy the API key and paste it into the extension settings
-
-#### Google Maps (~3 min)
-
-Required for: Google map layers (Standard, Satellite, Terrain, Hybrid) and Google Street View.
-
-1. Go to [Google Cloud Console](https://console.cloud.google.com/google/maps-apis/credentials)
-2. Create a free account and a new project
-3. Enable the **Map Tiles API** and the **Street View Static API** for your project
-4. Create an API key, copy it, and paste it into the extension settings
-
-#### Thunderforest (~1 min)
-
-Required for: Thunderforest Cycle Map layer.
-
-1. Go to [manage.thunderforest.com](https://manage.thunderforest.com/)
-2. Create a free account
-3. Copy the API key and paste it into the extension settings
-
-### Panorama Provider
-
-Switch between Mapy.cz and Google Street View either way — the choice is remembered:
-- The segmented control in the top-right of the panorama window
-- The dropdown next to the panorama toggle button on the map
+There are no automated tests. Releases are published to both stores by GitHub Actions when a `vX.Y.Z` tag is pushed; [CLAUDE.md](CLAUDE.md) has the full branch and release workflow.
 
 ## Usage
 
-1. Open the [Strava Heatmap](https://www.strava.com/maps/global-heatmap), the [Route Builder](https://www.strava.com/maps/create), or any activity's detail page
-2. Choose a layer from Strava's **Change map style** popover (heatmap / route builder) or the map style dropdown (activity page)
-3. To enable panorama mode, click the eye icon or press **`P`**
-4. Click anywhere on the map to view street-level imagery
+Open the [global heatmap](https://www.strava.com/maps/global-heatmap), the [route builder](https://www.strava.com/maps/create) or any activity page.
 
-> Panorama mode is available on the heatmap and route builder, not on activity detail pages.
+| To | Do this |
+| --- | --- |
+| Switch the base map | Pick a map in Strava's **Change map style** menu, or the map style dropdown on an activity page |
+| Go back to Strava's map | Pick any of Strava's own map styles |
+| Set a favorite map | Click the star on a map in the menu, next to the dropdown on an activity page, or choose it in **More Maps Settings** |
+| Explore Zwift's worlds | Turn on **Show Zwift worlds** in **More Maps Settings** (or answer the one-time card), then click **Zwift Worlds** in the map navigation and pick a world, or pick **Zwift** in the map style menu |
+| Fade or tint the custom map | Drag the **Brightness** and **Saturation** sliders under **Map Styling** in the map style menu |
+| Turn panorama mode on or off | Click the eye button on the map, or press **P** |
+| Look around a spot | With panorama mode on, click the map |
+| Switch panorama provider | Use the switch at the top of the panorama window, or the dropdown next to the eye button |
+| Enter API keys | Click **More Maps Settings** in the map navigation |
 
-## Development
+Panorama mode works on the heatmap and route builder, not on activity pages.
 
-```bash
-npm install
-npm run build   # copies sources to dist/
-npm run zip     # builds dist/ and packages into moremaps.zip
+## Project layout
+
 ```
-
-Releases are automated via GitHub Actions — pushing a `vX.Y.Z` tag builds and publishes to both stores. See [CLAUDE.md](CLAUDE.md) for full development and release workflow.
+manifest.json            Manifest V3 extension manifest
+constants.js             Map options, Strava selectors and storage keys (window.MoreMapsConfig)
+strings.js               User-visible text
+map-modifier.js          Content script: injects the page scripts, the menu entries,
+                         the panorama button, the settings modal and the Zwift worlds panel
+inject.js                Page script: finds Strava's map engine and swaps its base tiles,
+                         recolours tiles for the brightness and saturation sliders,
+                         and cuts Zwift's world maps into tiles
+background.js            Downloads Zwift's world maps (cdn.zwift.com allows no page access)
+zwift-permission.html    Asks for the optional cdn.zwift.com permission (with zwift-permission.js)
+panorama.js              Page script: panorama mode, the floating window and map marker
+panorama.html            Sandboxed page hosting the panorama viewers
+panorama-sandbox.js      Loads Mapy.cz Panorama or Google Street View inside the sandbox
+panorama-mapy-sdk.js     Bundled Mapy.cz panorama SDK
+browser-polyfill.js      webextension-polyfill, so one codebase runs in Chrome and Firefox
+assets/                  Map thumbnails, store badges and screenshots
+icons/                   Extension icons
+.github/workflows/       Release workflow publishing to the Chrome Web Store and Firefox Add-ons
+```
 
 ## License
 
-MIT License - see [LICENSE](LICENSE) for details.
+More Maps for Strava is released under the [MIT License](LICENSE). You may use, modify and redistribute it, provided the copyright notice stays with it.
 
-Copyright (c) 2026 Matyáš Strelec
+Zwift world positions come from [zwift-data](https://github.com/andipaetzold/zwift-data) by Andi Pätzold (MIT). Zwift and its world maps are the property of Zwift, Inc.; this project is not affiliated with or endorsed by Zwift or Strava.

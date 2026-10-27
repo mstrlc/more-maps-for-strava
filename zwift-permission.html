@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>More Maps – Zwift maps</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 24px;
+            font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            color: #242428;
+            background: #fff;
+        }
+        h1 { font-size: 18px; margin: 0 0 12px; }
+        p { margin: 0 0 12px; color: #494950; }
+        .actions { display: flex; gap: 8px; margin-top: 20px; }
+        button {
+            font: inherit;
+            font-weight: 600;
+            padding: 8px 16px;
+            border-radius: 4px;
+            border: 1px solid #fc4c02;
+            cursor: pointer;
+        }
+        #allow { background: #fc4c02; color: #fff; }
+        #cancel { background: #fff; color: #fc4c02; }
+    </style>
+</head>
+<body>
+    <h1>Show Zwift worlds on Strava's map</h1>
+    <p>To draw Zwift worlds under your heatmap, More Maps needs to download Zwift's world map images from <strong>cdn.zwift.com</strong>.</p>
+    <p>Your browser asks for this permission once. Nothing else is read or sent.</p>
+    <div class="actions">
+        <button id="allow">Allow</button>
+        <button id="cancel">Cancel</button>
+    </div>
+    <script src="zwift-permission.js"></script>
+</body>
+</html>
