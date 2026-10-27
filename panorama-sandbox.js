@@ -96,7 +96,7 @@ function waitForMapy() {
         const check = () => {
             if (window.Panorama || (window.SMap && window.SMap.Pano)) resolve();
             else if (attempts++ < 50) setTimeout(check, 100);
-            else reject(new Error('Mapy.cz API timeout'));
+            else reject(new Error('Mapy.com API timeout'));
         };
         check();
     });
@@ -159,7 +159,7 @@ function renderMapy(lon, lat, yaw) {
         state.pano = pano;
 
         if (pano.errorCode && pano.errorCode !== 'NONE') {
-            container.innerHTML = `<div class="error-msg">No Mapy.cz panorama found here.</div>`;
+            container.innerHTML = `<div class="error-msg">No Mapy.com panorama found here.</div>`;
             return;
         }
 

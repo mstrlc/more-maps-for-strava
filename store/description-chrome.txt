@@ -1,11 +1,11 @@
-Enhance Strava's maps with layers from Mapy.cz, OpenStreetMap, and Google Maps — on the global heatmap, the route builder, and activity detail pages. Click anywhere on the map to view street-level panoramas from Mapy.cz or Google Street View.
+Enhance Strava's maps with layers from Mapy.com, OpenStreetMap, and Google Maps — on the global heatmap, the route builder, and activity detail pages. Click anywhere on the map to view street-level panoramas from Mapy.com or Google Street View.
 
 
 🗺️ MAP LAYERS
 
 Swap Strava's base map for a layer from any of these providers:
 
-- Mapy.cz — Standard, Outdoor, Winter, Satellite
+- Mapy.com — Standard, Outdoor, Winter, Satellite
 - OpenStreetMap — Standard, CyclOSM, Cycle Map (Thunderforest)
 - Google Maps — Standard, Satellite, Terrain, Hybrid
 
@@ -14,7 +14,7 @@ On the heatmap and route builder, pick a layer from Strava's map style menu. On 
 
 👁️ PANORAMA MODE
 
-On the heatmap and route builder, click anywhere on the map to open a draggable, resizable panorama window with street-level imagery. Switch between Mapy.cz and Google Street View using the control in the panorama window. Press P to toggle panorama mode on/off.
+On the heatmap and route builder, click anywhere on the map to open a draggable, resizable panorama window with street-level imagery. Switch between Mapy.com and Google Street View using the control in the panorama window. Press P to toggle panorama mode on/off.
 
 
 ⚙️ SETUP
@@ -24,7 +24,7 @@ Some features require a free API key. Click the "More Maps Settings" button in S
 🔑 Keys are stored exclusively in your browser's local storage and never leave your device.
 
 
-Mapy.cz (~1 min) — required for Mapy.cz map layers and Mapy.cz Panorama
+Mapy.com (~1 min) — required for Mapy.com map layers and Mapy.com Panorama
 
 1. Go to developer.mapy.com/account/projects
 2. Create a free account and a new project

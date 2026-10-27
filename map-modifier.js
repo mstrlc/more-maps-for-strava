@@ -46,7 +46,7 @@ let panoramaButtonEl = null;
 // route-planner popover and the activity-page <select>. Read through
 // ourSections(), which leaves out Zwift unless it's enabled.
 const OUR_SECTIONS = [
-    { title: 'Mapy.cz', options: MAP_OPTIONS },
+    { title: 'Mapy.com', options: MAP_OPTIONS },
     { title: 'OpenStreetMap', options: OSM_OPTIONS },
     { title: 'Google Maps', options: GOOGLE_OPTIONS },
     { title: 'Zwift', options: ZWIFT_OPTIONS, zwift: true }
@@ -783,7 +783,7 @@ function createPanoramaButton() {
     btn.addEventListener('click', onPanoramaClick);
     panoramaButtonEl = btn;
 
-    // Provider switcher (Mapy.cz / Google), like the original.
+    // Provider switcher (Mapy.com / Google), like the original.
     const selector = document.createElement('select');
     selector.id = 'moremaps-pano-provider';
     selector.title = 'Panorama provider';
