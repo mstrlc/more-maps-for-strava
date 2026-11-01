@@ -33,11 +33,15 @@ if (typeof MoreMapsConfig !== 'undefined') {
             ZWIFT_PROMPT_TITLE: 'Do you ride Zwift?',
             ZWIFT_PROMPT_TEXT: "More Maps can show Zwift's worlds on Strava's maps, from Watopia to London, right where your virtual rides are.",
             ZWIFT_PROMPT_ENABLE: 'Show Zwift worlds',
-            ZWIFT_PROMPT_DISMISS: 'No thanks',
-            ZWIFT_PROMPT_CLOSE: 'Close',
+            PROMPT_DISMISS: 'No thanks',
+            PROMPT_CLOSE: 'Close',
             ZWIFT_ACTIVITY_TITLE: 'Ridden in Zwift',
             ZWIFT_ACTIVITY_TEXT: "This activity was recorded in Zwift. Show it on Zwift's map of the world it was ridden in?",
-            ZWIFT_ACTIVITY_ENABLE: 'Show Zwift map'
+            ZWIFT_ACTIVITY_ENABLE: 'Show Zwift map',
+            REVIEW_PROMPT_TITLE: 'Enjoying More Maps?',
+            REVIEW_PROMPT_TEXT_CHROME: 'A quick rating on the Chrome Web Store helps other riders find it. It takes a few seconds.',
+            REVIEW_PROMPT_TEXT_FIREFOX: 'A quick rating on Firefox Add-ons helps other riders find it. It takes a few seconds.',
+            REVIEW_PROMPT_ACCEPT: 'Rate More Maps'
         },
         PANORAMA: {
             LOADING: 'Loading Panorama...',
