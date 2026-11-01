@@ -19,6 +19,8 @@ if (typeof MoreMapsConfig !== 'undefined') {
             BRIGHTNESS_LABEL: 'Brightness',
             SATURATION_LABEL: 'Saturation',
             STYLING_RESET: 'Reset',
+            STYLING_BADGE_TOOLTIP: 'Map styling is on. Click to adjust.',
+            STYLING_BADGE_RESET: 'Reset map styling',
             FAVORITE_ADD: 'Set as favorite map',
             FAVORITE_REMOVE: 'Remove favorite map',
             FAVORITE_UNAVAILABLE: 'Pick a More Maps layer to set it as your favorite',

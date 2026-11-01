@@ -134,6 +134,7 @@ window.addEventListener('message', (event) => {
         // inject.js picked the map itself (the Zwift map on a Zwift activity).
         activeMapId = event.data.mapType;
         reflectActiveMapInActivitySelect();
+        updateStylingBadge();
     }
 });
 
@@ -213,6 +214,7 @@ async function triggerMapSwitch(mapId) {
     activeMapId = mapId;
     localStorage.setItem(STORAGE_KEYS.ACTIVE_ID, mapId);
     window.postMessage({ type: 'MOREMAPS_MAP_SWITCH', mapType: mapId }, '*');
+    updateStylingBadge();
 }
 
 // Reset to Strava's own base map. Strava's native style button performs the
@@ -224,6 +226,7 @@ function clearToStrava() {
     activeMapId = 'strava-default';
     localStorage.setItem(STORAGE_KEYS.ACTIVE_ID, 'strava-default');
     window.postMessage({ type: 'MOREMAPS_MAP_CLEAR' }, '*');
+    updateStylingBadge();
 }
 
 // ---------------------------------------------------------------------------
@@ -552,8 +555,18 @@ const STYLING_SLIDERS = [
     { key: 'saturation', label: () => STRINGS.UI.SATURATION_LABEL, storageKey: STORAGE_KEYS.TILE_SATURATION, min: 0, max: 200 }
 ];
 
+// Re-reads storage into the open popover's sliders (if any).
+const stylingSyncs = new Set();
+
 function postTileFilter() {
     window.postMessage({ type: 'MOREMAPS_TILE_FILTER', filter: MoreMapsConfig.getTileFilter() }, '*');
+    updateStylingBadge();
+}
+
+function resetTileFilter() {
+    STYLING_SLIDERS.forEach(s => localStorage.removeItem(s.storageKey));
+    stylingSyncs.forEach(sync => sync());
+    postTileFilter();
 }
 
 function createStylingSection() {
@@ -603,13 +616,87 @@ function createStylingSection() {
     reset.type = 'button';
     reset.textContent = STRINGS.UI.STYLING_RESET;
     reset.style.cssText = 'margin-left:auto; border:none; background:none; padding:0; font:inherit; font-size:13px; color:#666; cursor:pointer;';
-    reset.addEventListener('click', () => {
-        STYLING_SLIDERS.forEach(s => localStorage.removeItem(s.storageKey));
-        inputs.forEach(sync => sync());
-        postTileFilter();
-    });
+    reset.addEventListener('click', resetTileFilter);
     header.appendChild(reset);
+    // Strava unmounts the popover on close; drop its syncs with it.
+    inputs.forEach(sync => stylingSyncs.add(sync));
+    const forget = new MutationObserver(() => {
+        if (section.isConnected) return;
+        inputs.forEach(sync => stylingSyncs.delete(sync));
+        forget.disconnect();
+    });
+    requestAnimationFrame(() => forget.observe(document.body, { childList: true, subtree: true }));
     return section;
+}
+
+// A badge beside Strava's "Change map style" button while a non-neutral
+// filter is recolouring one of our layers, so the map's odd colours have a
+// visible cause and a one-click way back. Clicking the values opens the
+// popover with the sliders.
+function updateStylingBadge() {
+    const region = document.querySelector('[class*="CoreMap_bottomLeftUIControls"]');
+    let badge = document.getElementById('moremaps-styling-badge');
+    const filter = MoreMapsConfig.getTileFilter();
+    const show = region && activeMapId !== 'strava-default' && !MoreMapsConfig.isNeutralTileFilter(filter);
+    if (!show) { if (badge) badge.remove(); return; }
+
+    const styleGroup = region.querySelector('[class*="ControlButton_controlGroup"]');
+    const styleBtn = styleGroup && styleGroup.querySelector('button');
+    if (!styleBtn) return;
+    if (!badge) badge = createStylingBadge(styleBtn);
+    // Sit to the right of the map-style button, level with it. The region is a
+    // column Strava lays out, so float beside it rather than joining it.
+    if (getComputedStyle(region).position === 'static') region.style.position = 'relative';
+    if (badge.parentElement !== region) region.appendChild(badge);
+    badge.style.top = styleGroup.offsetTop + 'px';
+    badge.style.left = (styleGroup.offsetLeft + styleGroup.offsetWidth + 10) + 'px';
+    badge.style.height = styleBtn.offsetHeight + 'px';
+
+    const pct = (v, signed) => (signed && v > 0 ? '+' : '') + String(v).replace('-', '−') + '%';
+    const parts = STYLING_SLIDERS
+        .filter(s => filter[s.key] !== MoreMapsConfig.TILE_FILTER_DEFAULTS[s.key])
+        .map(s => `${s.label()} ${pct(filter[s.key], s.signed)}`);
+    // Only write on change: this also runs from the MutationObserver, and a
+    // write is itself a mutation.
+    const text = badge.querySelector('[data-mm-values]');
+    const label = parts.join(' · ');
+    if (text.textContent !== label) text.textContent = label;
+}
+
+function createStylingBadge(styleBtn) {
+    const badge = document.createElement('div');
+    badge.id = 'moremaps-styling-badge';
+    badge.style.cssText = 'position:absolute; display:flex; align-items:stretch; overflow:hidden; background:#fff; border-radius:4px; box-shadow:0 0 0 2px rgba(0,0,0,0.1); font-family:"Boathouse","Noto Sans","Segoe UI",sans-serif; font-size:12px; color:#242428; white-space:nowrap; z-index:1;';
+
+    const values = document.createElement('button');
+    values.type = 'button';
+    values.title = STRINGS.UI.STYLING_BADGE_TOOLTIP;
+    values.style.cssText = 'display:flex; align-items:center; gap:6px; border:none; background:none; padding:0 8px; font:inherit; color:inherit; cursor:pointer;';
+    const dot = document.createElement('span');
+    dot.style.cssText = `width:6px; height:6px; border-radius:50%; background:${ORANGE}; flex:none;`;
+    const text = document.createElement('span');
+    text.dataset.mmValues = '1';
+    values.append(dot, text);
+    values.addEventListener('click', () => styleBtn.isConnected && styleBtn.click());
+
+    const reset = document.createElement('button');
+    reset.type = 'button';
+    reset.title = STRINGS.UI.STYLING_BADGE_RESET;
+    reset.setAttribute('aria-label', STRINGS.UI.STYLING_BADGE_RESET);
+    reset.style.cssText = 'display:flex; align-items:center; justify-content:center; width:29px; border:none; border-left:1px solid #e6e6e6; background:none; padding:0; color:#242428; cursor:pointer;';
+    // Counter-clockwise arrow: "undo the styling".
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('viewBox', '0 0 16 16'); svg.setAttribute('width', '14'); svg.setAttribute('height', '14');
+    svg.setAttribute('fill', 'none'); svg.setAttribute('stroke', 'currentColor'); svg.setAttribute('stroke-width', '1.6');
+    svg.setAttribute('stroke-linecap', 'round'); svg.setAttribute('stroke-linejoin', 'round'); svg.setAttribute('aria-hidden', 'true');
+    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    path.setAttribute('d', 'M2.5 8a5.5 5.5 0 1 0 1.6-3.9M2.5 2v3.5H6');
+    svg.appendChild(path);
+    reset.appendChild(svg);
+    reset.addEventListener('click', resetTileFilter);
+
+    badge.append(values, reset);
+    return badge;
 }
 
 // Cap the popover to the free space inside the map: from the edge it is
@@ -1444,6 +1531,7 @@ const observer = new MutationObserver(() => {
     createZwiftButton();
     maybeShowZwiftPrompt();
     injectIntoActivitySelect();
+    updateStylingBadge();
 });
 
 function init() {
