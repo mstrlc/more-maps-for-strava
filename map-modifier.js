@@ -1516,23 +1516,23 @@ function injectSettingsModal() {
     const SECTION_ICONS = {
         key: '<path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/>',
         star: '<path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01z"/>',
-        lock: '<rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>'
+        lock: '<rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>',
+        trash: '<path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6M10 11v6M14 11v6"/>',
+        // Zwift's logo (icons/zwift.svg) traced as an outline, in its own coordinates.
+        zwift: '<path d="M30.866 26.667h-4.49L42.565 0H6.615C2.961 0 0 2.985 0 6.667s2.962 6.666 6.615 6.666h4.469L.955 30.018S0 31.421 0 33.443C0 37.065 2.913 40 6.506 40h24.36c3.654 0 6.615-2.985 6.615-6.667 0-3.681-2.961-6.666-6.615-6.666"/>'
     };
-    const lineIcon = (name, size) => `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:none;">${SECTION_ICONS[name]}</svg>`;
+    const ICON_FRAMES = { zwift: { viewBox: '-3 -3 48.6 46', strokeWidth: 4 } };
+    const lineIcon = (name, size) => {
+        const { viewBox = '0 0 24 24', strokeWidth = 2 } = ICON_FRAMES[name] || {};
+        return `<svg viewBox="${viewBox}" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="${strokeWidth}" stroke-linecap="round" stroke-linejoin="round" style="flex:none;">${SECTION_ICONS[name]}</svg>`;
+    };
     const makeSection = (icon, titleText, forId, ...children) => {
         const section = document.createElement('div');
         section.style.cssText = 'padding:20px 0; border-top:1px solid #eee;';
         const heading = document.createElement(forId ? 'label' : 'div');
         if (forId) heading.htmlFor = forId;
         heading.style.cssText = 'display:flex; align-items:center; gap:8px; margin-bottom:8px; font-weight:700; font-size:15px; color:#242428;';
-        if (icon.endsWith('.svg')) {
-            const img = document.createElement('img');
-            img.src = browser.runtime.getURL(icon);
-            img.style.cssText = 'width:16px; height:16px;';
-            heading.appendChild(img);
-        } else {
-            heading.insertAdjacentHTML('beforeend', `<span style="display:flex; color:${ORANGE};">${lineIcon(icon, 16)}</span>`);
-        }
+        heading.insertAdjacentHTML('beforeend', `<span style="display:flex; color:${ORANGE};">${lineIcon(icon, 16)}</span>`);
         heading.append(titleText);
         section.append(heading, ...children);
         const last = children[children.length - 1];
@@ -1618,8 +1618,7 @@ function injectSettingsModal() {
     };
 
     const resetBtn = document.createElement('button');
-    resetBtn.style.cssText = 'padding:0; background:transparent; color:#999; border:none; font:inherit; font-size:12px; font-weight:500; cursor:pointer; text-decoration:underline;';
-    resetBtn.textContent = STRINGS.UI.RESET_BUTTON;
+    resetBtn.type = 'button';
     resetBtn.onclick = () => {
         if (confirm(STRINGS.UI.DELETE_DATA_CONFIRM)) {
             const keys = [];
@@ -1639,19 +1638,24 @@ function injectSettingsModal() {
     apiSection.style.paddingTop = '0';
     content.appendChild(apiSection);
     content.appendChild(makeSection('star', STRINGS.SETTINGS.FAVORITE_LABEL, 'moremaps-favorite-map', favExplainer, favSelect));
-    content.appendChild(makeSection('icons/zwift.svg', STRINGS.SETTINGS.ZWIFT_LABEL, null, zwiftToggle, zwiftExplainer));
+    content.appendChild(makeSection('zwift', STRINGS.SETTINGS.ZWIFT_LABEL, null, zwiftToggle, zwiftExplainer));
     // Footer: a standing way to rate, and the destructive reset, both kept quiet.
     // Rating from here counts as answering the card, so that never shows afterwards.
     const footer = document.createElement('div');
     footer.style.cssText = 'display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px 16px; margin-top:16px; padding-top:16px; border-top:1px solid #eee;';
+    // Both footer actions share one look: icon + small bold text, underlined on hover.
+    const styleFooterAction = (el, icon, iconColor, color, label) => {
+        el.style.cssText = `display:inline-flex; align-items:center; gap:6px; padding:0; border:none; background:none; font:inherit; color:${color}; font-size:12px; font-weight:600; text-decoration:none; cursor:pointer;`;
+        el.innerHTML = `<span style="display:flex; color:${iconColor};">${lineIcon(icon, 14)}</span>`;
+        el.append(label);
+        el.addEventListener('mouseenter', () => { el.style.textDecoration = 'underline'; });
+        el.addEventListener('mouseleave', () => { el.style.textDecoration = 'none'; });
+    };
     const rateLink = document.createElement('a');
     rateLink.href = reviewUrl(); rateLink.target = '_blank'; rateLink.rel = 'noopener';
-    rateLink.style.cssText = 'display:inline-flex; align-items:center; gap:6px; color:#494950; font-size:12px; font-weight:600; text-decoration:none;';
-    rateLink.innerHTML = `<svg viewBox="0 0 24 24" width="14" height="14" fill="${ORANGE}"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01z"/></svg>`;
-    rateLink.append(isFirefox() ? STRINGS.SETTINGS.RATE_LINK_FIREFOX : STRINGS.SETTINGS.RATE_LINK_CHROME);
-    rateLink.addEventListener('mouseenter', () => { rateLink.style.textDecoration = 'underline'; });
-    rateLink.addEventListener('mouseleave', () => { rateLink.style.textDecoration = 'none'; });
+    styleFooterAction(rateLink, 'star', ORANGE, '#494950', isFirefox() ? STRINGS.SETTINGS.RATE_LINK_FIREFOX : STRINGS.SETTINGS.RATE_LINK_CHROME);
     rateLink.addEventListener('click', () => localStorage.setItem(STORAGE_KEYS.REVIEW_PROMPTED, '1'));
+    styleFooterAction(resetBtn, 'trash', '#999', '#6d6d78', STRINGS.UI.RESET_BUTTON);
     footer.append(rateLink, resetBtn);
 
     content.appendChild(saveBtn); content.appendChild(footer);
