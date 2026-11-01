@@ -1119,12 +1119,21 @@ function showReviewPrompt() {
         document.querySelector('select[class*="MapTypeControl--select"]');
     if (!anchor || !isReviewDue()) return;
     const firefox = isFirefox();
-    showPromptCard(anchor, {
-        icon: 'icons/icon.png',
+    // Only when Strava itself is in Czech or Slovak, not merely the browser.
+    const lang = (document.documentElement.lang || '').slice(0, 2).toLowerCase();
+    const local = STRINGS.REVIEW_PROMPT_LOCALIZED[lang];
+    const copy = local ? {
+        title: local.TITLE,
+        text: firefox ? local.TEXT_FIREFOX : local.TEXT_CHROME,
+        accept: local.ACCEPT,
+        dismiss: local.DISMISS,
+        close: local.CLOSE
+    } : {
         title: STRINGS.UI.REVIEW_PROMPT_TITLE,
         text: firefox ? STRINGS.UI.REVIEW_PROMPT_TEXT_FIREFOX : STRINGS.UI.REVIEW_PROMPT_TEXT_CHROME,
         accept: STRINGS.UI.REVIEW_PROMPT_ACCEPT
-    }, (accepted) => {
+    };
+    showPromptCard(anchor, { icon: 'icons/icon.png', ...copy }, (accepted) => {
         localStorage.setItem(STORAGE_KEYS.REVIEW_PROMPTED, '1');
         if (!accepted) return;
         window.open(reviewUrl(), '_blank', 'noopener');
@@ -1151,7 +1160,7 @@ function showPromptCard(anchor, copy, onAnswer) {
     const close = document.createElement('button');
     close.type = 'button';
     close.textContent = '×';
-    close.setAttribute('aria-label', STRINGS.UI.PROMPT_CLOSE);
+    close.setAttribute('aria-label', copy.close || STRINGS.UI.PROMPT_CLOSE);
     close.style.cssText = 'border:none; background:none; font-size:20px; line-height:1; color:#999; cursor:pointer; padding:0 2px;';
     header.append(logo, title, close);
 
@@ -1163,7 +1172,7 @@ function showPromptCard(anchor, copy, onAnswer) {
     actions.style.cssText = 'display:flex; gap:8px; justify-content:flex-end;';
     const dismiss = document.createElement('button');
     dismiss.type = 'button';
-    dismiss.textContent = STRINGS.UI.PROMPT_DISMISS;
+    dismiss.textContent = copy.dismiss || STRINGS.UI.PROMPT_DISMISS;
     dismiss.style.cssText = 'border:none; background:none; font:inherit; font-size:13px; font-weight:600; color:#6d6d78; cursor:pointer; padding:8px 12px;';
     const accept = document.createElement('button');
     accept.type = 'button';

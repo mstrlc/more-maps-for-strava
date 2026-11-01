@@ -43,6 +43,26 @@ if (typeof MoreMapsConfig !== 'undefined') {
             REVIEW_PROMPT_TEXT_FIREFOX: 'A quick rating on Firefox Add-ons helps other riders find it. It takes a few seconds.',
             REVIEW_PROMPT_ACCEPT: 'Rate More Maps'
         },
+        // The rating card in the language of Strava's own UI, for the many
+        // Czech and Slovak users. Keyed by the <html lang> Strava sets.
+        REVIEW_PROMPT_LOCALIZED: {
+            cs: {
+                TITLE: 'Líbí se vám More Maps?',
+                TEXT_CHROME: 'Krátké hodnocení v Chrome Web Store pomůže rozšíření najít dalším uživatelům. Zabere jen pár vteřin.',
+                TEXT_FIREFOX: 'Krátké hodnocení v Doplňcích pro Firefox pomůže rozšíření najít dalším uživatelům. Zabere jen pár vteřin.',
+                ACCEPT: 'Ohodnotit More Maps',
+                DISMISS: 'Ne, díky',
+                CLOSE: 'Zavřít'
+            },
+            sk: {
+                TITLE: 'Páči sa vám More Maps?',
+                TEXT_CHROME: 'Krátke hodnotenie v Chrome Web Store pomôže rozšírenie nájsť ďalším používateľom. Zaberie len pár sekúnd.',
+                TEXT_FIREFOX: 'Krátke hodnotenie v Doplnkoch pre Firefox pomôže rozšírenie nájsť ďalším používateľom. Zaberie len pár sekúnd.',
+                ACCEPT: 'Ohodnotiť More Maps',
+                DISMISS: 'Nie, ďakujem',
+                CLOSE: 'Zavrieť'
+            }
+        },
         PANORAMA: {
             LOADING: 'Loading Panorama...',
             NO_PANO_TITLE: 'No Panorama available',
