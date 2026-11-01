@@ -62,7 +62,7 @@ if (typeof MoreMapsConfig !== 'undefined') {
             TF_PLACEHOLDER: 'Paste your Thunderforest API key here...',
             PROVIDER_MAPY: 'Mapy.com',
             PROVIDER_GOOGLE: 'Google Street View',
-            API_KEYS_HEADER: 'API Keys',
+            API_KEYS_HEADER: 'API keys',
             API_KEYS_EXPLAINER: 'To keep this extension free, each user provides their own API keys. Providers charge per request, so the key needs to be linked to your account. The free tiers are generous — <strong>no credit card required</strong>, and <strong>personal use won\'t cost you anything</strong>.',
             GET_KEY: 'Get free key (~1 min)',
             GET_KEY_GOOGLE: 'Get free key (~3 min)',

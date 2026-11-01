@@ -1511,6 +1511,35 @@ function injectSettingsModal() {
     closeBtn.style.cssText = `position:absolute; top:16px; right:16px; background:none; border:none; font-size:24px; cursor:pointer; color:#999; z-index:10001;`;
     closeBtn.addEventListener('click', (e) => { e.stopPropagation(); modal.style.display = 'none'; });
 
+    // The dialog's three sections (API keys, favorite map, Zwift), each under
+    // an icon and title, with a divider between them.
+    const SECTION_ICONS = {
+        key: '<path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/>',
+        star: '<path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01z"/>',
+        lock: '<rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>'
+    };
+    const lineIcon = (name, size) => `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:none;">${SECTION_ICONS[name]}</svg>`;
+    const makeSection = (icon, titleText, forId, ...children) => {
+        const section = document.createElement('div');
+        section.style.cssText = 'padding:20px 0; border-top:1px solid #eee;';
+        const heading = document.createElement(forId ? 'label' : 'div');
+        if (forId) heading.htmlFor = forId;
+        heading.style.cssText = 'display:flex; align-items:center; gap:8px; margin-bottom:8px; font-weight:700; font-size:15px; color:#242428;';
+        if (icon.endsWith('.svg')) {
+            const img = document.createElement('img');
+            img.src = browser.runtime.getURL(icon);
+            img.style.cssText = 'width:16px; height:16px;';
+            heading.appendChild(img);
+        } else {
+            heading.insertAdjacentHTML('beforeend', `<span style="display:flex; color:${ORANGE};">${lineIcon(icon, 16)}</span>`);
+        }
+        heading.append(titleText);
+        section.append(heading, ...children);
+        const last = children[children.length - 1];
+        if (last) last.style.marginBottom = '0';
+        return section;
+    };
+
     const createApiLink = (url, label = STRINGS.SETTINGS.GET_KEY) => {
         const a = document.createElement('a');
         a.href = url; a.target = '_blank';
@@ -1546,10 +1575,6 @@ function injectSettingsModal() {
     const tf = makeField(STRINGS.SETTINGS.TF_LABEL, STORAGE_KEYS.TF_KEY, STRINGS.SETTINGS.TF_PLACEHOLDER, createApiLink(STRINGS.SETTINGS.API_LINKS.TF));
 
     // Favorite map: applied automatically whenever a Strava map loads.
-    const favLabel = document.createElement('label');
-    favLabel.htmlFor = 'moremaps-favorite-map';
-    favLabel.style.cssText = 'display:block; margin:8px 0 4px; font-weight:600; text-align:left; font-size:13px; color:#333;';
-    favLabel.textContent = STRINGS.SETTINGS.FAVORITE_LABEL;
     const favExplainer = document.createElement('p');
     favExplainer.style.cssText = 'font-size:12px; color:#666; margin:0 0 8px 0; line-height:1.5;';
     favExplainer.textContent = STRINGS.SETTINGS.FAVORITE_EXPLAINER;
@@ -1559,9 +1584,6 @@ function injectSettingsModal() {
     fillFavoriteOptions(favSelect);
 
     // Zwift worlds (opt-in).
-    const zwiftLabel = document.createElement('div');
-    zwiftLabel.style.cssText = 'margin:8px 0 4px; font-weight:600; text-align:left; font-size:13px; color:#333;';
-    zwiftLabel.textContent = STRINGS.SETTINGS.ZWIFT_LABEL;
     const zwiftToggle = document.createElement('label');
     zwiftToggle.style.cssText = 'display:flex; align-items:center; gap:8px; font-size:13px; color:#333; cursor:pointer;';
     const zwiftCheckbox = document.createElement('input');
@@ -1576,8 +1598,9 @@ function injectSettingsModal() {
     zwiftExplainer.textContent = STRINGS.SETTINGS.ZWIFT_EXPLAINER;
 
     const storageInfo = document.createElement('div');
-    storageInfo.style.cssText = 'font-size:11px; color:#888; margin-bottom:24px; text-align:left;';
-    storageInfo.textContent = STRINGS.UI.API_KEYS_NOTICE;
+    storageInfo.style.cssText = 'display:flex; align-items:flex-start; gap:6px; font-size:11px; color:#888; line-height:1.5; text-align:left;';
+    storageInfo.innerHTML = `<span style="display:flex; padding-top:2px;">${lineIcon('lock', 12)}</span>`;
+    storageInfo.append(STRINGS.UI.API_KEYS_NOTICE);
 
     const saveBtn = document.createElement('button');
     saveBtn.style.cssText = 'width:100%; padding:12px; background:#fc4c02; color:white; border:none; border-radius:6px; font-weight:600; cursor:pointer; font-size:16px;';
@@ -1607,12 +1630,16 @@ function injectSettingsModal() {
     };
 
     content.appendChild(closeBtn); content.appendChild(headerWrapper);
-    content.appendChild(instructions); content.appendChild(apiKeysExplainer);
-    content.appendChild(mapy.label); content.appendChild(mapy.input);
-    content.appendChild(google.label); content.appendChild(google.input);
-    content.appendChild(tf.label); content.appendChild(tf.input);
-    content.appendChild(favLabel); content.appendChild(favExplainer); content.appendChild(favSelect);
-    content.appendChild(zwiftLabel); content.appendChild(zwiftToggle); content.appendChild(zwiftExplainer);
+    content.appendChild(instructions);
+    tf.input.style.marginBottom = '10px'; // keeps the storage notice with the keys
+    const apiSection = makeSection('key', STRINGS.SETTINGS.API_KEYS_HEADER, null, apiKeysExplainer,
+        mapy.label, mapy.input, google.label, google.input, tf.label, tf.input, storageInfo);
+    // The dialog's title already separates the first section.
+    apiSection.style.borderTop = 'none';
+    apiSection.style.paddingTop = '0';
+    content.appendChild(apiSection);
+    content.appendChild(makeSection('star', STRINGS.SETTINGS.FAVORITE_LABEL, 'moremaps-favorite-map', favExplainer, favSelect));
+    content.appendChild(makeSection('icons/zwift.svg', STRINGS.SETTINGS.ZWIFT_LABEL, null, zwiftToggle, zwiftExplainer));
     // Footer: a standing way to rate, and the destructive reset, both kept quiet.
     // Rating from here counts as answering the card, so that never shows afterwards.
     const footer = document.createElement('div');
@@ -1627,7 +1654,7 @@ function injectSettingsModal() {
     rateLink.addEventListener('click', () => localStorage.setItem(STORAGE_KEYS.REVIEW_PROMPTED, '1'));
     footer.append(rateLink, resetBtn);
 
-    content.appendChild(storageInfo); content.appendChild(saveBtn); content.appendChild(footer);
+    content.appendChild(saveBtn); content.appendChild(footer);
     modal.appendChild(content);
     modal.addEventListener('click', (e) => { if (e.target === modal) modal.style.display = 'none'; });
     document.body.appendChild(modal);
