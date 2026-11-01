@@ -90,7 +90,7 @@ if (typeof MoreMapsConfig !== 'undefined') {
     MoreMapsConfig.TRANSLATIONS = {
         cs: {
             UI: {
-                PANORAMA_TOOLTIP: 'Režim panoramat',
+                PANORAMA_TOOLTIP: 'Režim panorama',
                 SETTINGS_LABEL: 'Nastavení More Maps',
                 SETTINGS_TITLE: 'Nastavení More Maps',
                 API_KEYS_NOTICE: 'API klíče se ukládají jen do místního úložiště vašeho prohlížeče a nikdy ho neopustí.',
