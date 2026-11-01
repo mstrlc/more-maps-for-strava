@@ -77,7 +77,18 @@ var MoreMapsConfig = {
         ZWIFT_ENABLED: 'moremaps_zwift_enabled',
         ZWIFT_PROMPTED: 'moremaps_zwift_prompted',
         ZWIFT_ACTIVITY_PROMPTED: 'moremaps_zwift_activity_prompted',
-        ZWIFT_IMAGES_ALLOWED: 'moremaps_zwift_images_allowed'
+        ZWIFT_IMAGES_ALLOWED: 'moremaps_zwift_images_allowed',
+        USAGE_FIRST_DAY: 'moremaps_usage_first_day',
+        USAGE_LAST_DAY: 'moremaps_usage_last_day',
+        USAGE_DAYS: 'moremaps_usage_days',
+        REVIEW_PROMPTED: 'moremaps_review_prompted'
+    },
+
+    // Where the "Enjoying More Maps?" card sends people to rate the extension.
+    // Edge and other Chromium browsers install from the Chrome Web Store too.
+    REVIEW_URLS: {
+        CHROME: 'https://chromewebstore.google.com/detail/more-maps-for-strava/adpgjdeigiekdjnjionhhblgfpmkionl/reviews',
+        FIREFOX: 'https://addons.mozilla.org/firefox/addon/more-maps-for-strava/'
     }
 };
 

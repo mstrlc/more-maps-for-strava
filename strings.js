@@ -33,11 +33,15 @@ if (typeof MoreMapsConfig !== 'undefined') {
             ZWIFT_PROMPT_TITLE: 'Do you ride Zwift?',
             ZWIFT_PROMPT_TEXT: "More Maps can show Zwift's worlds on Strava's maps, from Watopia to London, right where your virtual rides are.",
             ZWIFT_PROMPT_ENABLE: 'Show Zwift worlds',
-            ZWIFT_PROMPT_DISMISS: 'No thanks',
-            ZWIFT_PROMPT_CLOSE: 'Close',
+            PROMPT_DISMISS: 'No thanks',
+            PROMPT_CLOSE: 'Close',
             ZWIFT_ACTIVITY_TITLE: 'Ridden in Zwift',
             ZWIFT_ACTIVITY_TEXT: "This activity was recorded in Zwift. Show it on Zwift's map of the world it was ridden in?",
-            ZWIFT_ACTIVITY_ENABLE: 'Show Zwift map'
+            ZWIFT_ACTIVITY_ENABLE: 'Show Zwift map',
+            REVIEW_PROMPT_TITLE: 'Enjoying More Maps?',
+            REVIEW_PROMPT_TEXT_CHROME: 'A quick rating on the Chrome Web Store helps other riders find it. It takes a few seconds.',
+            REVIEW_PROMPT_TEXT_FIREFOX: 'A quick rating on Firefox Add-ons helps other riders find it. It takes a few seconds.',
+            REVIEW_PROMPT_ACCEPT: 'Rate More Maps'
         },
         PANORAMA: {
             LOADING: 'Loading Panorama...',
@@ -58,7 +62,7 @@ if (typeof MoreMapsConfig !== 'undefined') {
             TF_PLACEHOLDER: 'Paste your Thunderforest API key here...',
             PROVIDER_MAPY: 'Mapy.com',
             PROVIDER_GOOGLE: 'Google Street View',
-            API_KEYS_HEADER: 'API Keys',
+            API_KEYS_HEADER: 'API keys',
             API_KEYS_EXPLAINER: 'To keep this extension free, each user provides their own API keys. Providers charge per request, so the key needs to be linked to your account. The free tiers are generous — <strong>no credit card required</strong>, and <strong>personal use won\'t cost you anything</strong>.',
             GET_KEY: 'Get free key (~1 min)',
             GET_KEY_GOOGLE: 'Get free key (~3 min)',
@@ -69,6 +73,8 @@ if (typeof MoreMapsConfig !== 'undefined') {
             ZWIFT_LABEL: 'Zwift worlds',
             ZWIFT_TOGGLE: 'Show Zwift worlds',
             ZWIFT_EXPLAINER: 'Adds a Zwift Worlds button next to this one and a Zwift section to the map style menu.',
+            RATE_LINK_CHROME: 'Rate on Chrome Web Store',
+            RATE_LINK_FIREFOX: 'Rate on Firefox Add-ons',
             API_LINKS: {
                 MAPY: 'https://developer.mapy.com/account/projects',
                 GOOGLE: 'https://console.cloud.google.com/google/maps-apis/credentials',

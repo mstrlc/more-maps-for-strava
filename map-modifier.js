@@ -135,6 +135,10 @@ window.addEventListener('message', (event) => {
         activeMapId = event.data.mapType;
         reflectActiveMapInActivitySelect();
         updateStylingBadge();
+    } else if (event.data.type === 'MOREMAPS_MAP_SHOWN') {
+        // One of our maps loaded fine, whether picked here or opened by inject.js.
+        recordUsageDay();
+        maybeAskForReview(event.data.mapType);
     }
 });
 
@@ -982,18 +986,21 @@ function setZwiftEnabled(enabled) {
 }
 
 // ---------------------------------------------------------------------------
-// Zwift offers: "Do you ride Zwift?" and "Ridden in Zwift"
+// One-time cards: "Do you ride Zwift?", "Ridden in Zwift", "Enjoying More Maps?"
 // ---------------------------------------------------------------------------
-// Two one-time cards. On Strava's maps, "Do you ride Zwift?" (under the More
-// Maps Settings button) turns on the Zwift features. On an activity recorded
-// in Zwift, "Ridden in Zwift" (under the map style dropdown) only shows that
-// ride on Zwift's map, for anyone, without turning the rest on. Each is asked
-// once; any answer, closing it included, is final.
-const ZWIFT_PROMPT_DELAY_MS = 1500;
-let zwiftPromptScheduled = false;
+// On Strava's maps, "Do you ride Zwift?" (under the More Maps Settings button)
+// turns on the Zwift features. On an activity recorded in Zwift, "Ridden in
+// Zwift" (under the map style dropdown) only shows that ride on Zwift's map,
+// for anyone, without turning the rest on. "Enjoying More Maps?" asks regular
+// users for a store rating, right after one of our maps has loaded fine.
+// Each is asked once; any answer, closing it included, is final. At most one
+// card shows per page load.
+const PROMPT_DELAY_MS = 1500;
+let promptScheduled = false;
+let promptShown = false;
 
-function maybeShowZwiftPrompt() {
-    if (zwiftPromptScheduled || document.getElementById('moremaps-zwift-prompt')) return;
+function maybeShowPrompt() {
+    if (promptScheduled || promptShown) return;
     const settings = document.querySelector('[data-key="more-maps-settings"] button');
     if (settings && !MoreMapsConfig.isZwiftEnabled() && !localStorage.getItem(STORAGE_KEYS.ZWIFT_PROMPTED)) {
         schedule(showZwiftPrompt);
@@ -1008,16 +1015,16 @@ function maybeShowZwiftPrompt() {
     }
 
     function schedule(show) {
-        zwiftPromptScheduled = true;
+        promptScheduled = true;
         // Let the map load first, so the card doesn't land in the middle of it.
-        setTimeout(() => { zwiftPromptScheduled = false; show(); }, ZWIFT_PROMPT_DELAY_MS);
+        setTimeout(() => { promptScheduled = false; show(); }, PROMPT_DELAY_MS);
     }
 }
 
 function showZwiftPrompt() {
     const anchor = document.querySelector('[data-key="more-maps-settings"] button');
     if (!anchor || localStorage.getItem(STORAGE_KEYS.ZWIFT_PROMPTED)) return;
-    showZwiftCard(anchor, {
+    showPromptCard(anchor, {
         title: STRINGS.UI.ZWIFT_PROMPT_TITLE,
         text: STRINGS.UI.ZWIFT_PROMPT_TEXT,
         accept: STRINGS.UI.ZWIFT_PROMPT_ENABLE
@@ -1033,7 +1040,7 @@ function showZwiftPrompt() {
 function showZwiftActivityPrompt() {
     const sel = document.querySelector('select[class*="MapTypeControl--select"]');
     if (!sel || MoreMapsConfig.zwiftImagesAllowed() || localStorage.getItem(STORAGE_KEYS.ZWIFT_ACTIVITY_PROMPTED)) return;
-    showZwiftCard(sel, {
+    showPromptCard(sel, {
         title: STRINGS.UI.ZWIFT_ACTIVITY_TITLE,
         text: STRINGS.UI.ZWIFT_ACTIVITY_TEXT,
         accept: STRINGS.UI.ZWIFT_ACTIVITY_ENABLE
@@ -1046,9 +1053,88 @@ function showZwiftActivityPrompt() {
     });
 }
 
-function showZwiftCard(anchor, copy, onAnswer) {
+// Asked only of people who keep coming back: More Maps layers shown on at least
+// REVIEW_MIN_DAYS_USED different days, the first of them REVIEW_MIN_AGE_DAYS ago.
+const REVIEW_MIN_DAYS_USED = 5;
+const REVIEW_MIN_AGE_DAYS = 14;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+function localDay() {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+// Called whenever one of our layers is on screen; counts each day once.
+function recordUsageDay() {
+    const today = localDay();
+    if (localStorage.getItem(STORAGE_KEYS.USAGE_LAST_DAY) === today) return;
+    if (!localStorage.getItem(STORAGE_KEYS.USAGE_FIRST_DAY)) localStorage.setItem(STORAGE_KEYS.USAGE_FIRST_DAY, today);
+    const days = parseInt(localStorage.getItem(STORAGE_KEYS.USAGE_DAYS), 10) || 0;
+    localStorage.setItem(STORAGE_KEYS.USAGE_DAYS, String(days + 1));
+    localStorage.setItem(STORAGE_KEYS.USAGE_LAST_DAY, today);
+}
+
+function isReviewDue() {
+    if (localStorage.getItem(STORAGE_KEYS.REVIEW_PROMPTED)) return false;
+    const first = localStorage.getItem(STORAGE_KEYS.USAGE_FIRST_DAY);
+    const days = parseInt(localStorage.getItem(STORAGE_KEYS.USAGE_DAYS), 10) || 0;
+    if (!first || days < REVIEW_MIN_DAYS_USED) return false;
+    return Date.parse(localDay()) - Date.parse(first) >= REVIEW_MIN_AGE_DAYS * DAY_MS;
+}
+
+// Give them a moment with the map first, then ask only if they're still on it
+// and not in the middle of something (a menu, settings, a panorama).
+const REVIEW_AFTER_SHOWN_MS = 3000;
+
+function maybeAskForReview(mapId) {
+    if (promptScheduled || promptShown || !isReviewDue()) return;
+    promptScheduled = true;
+    setTimeout(() => {
+        promptScheduled = false;
+        if (activeMapId !== mapId || document.hidden || isBusy()) return;
+        showReviewPrompt();
+    }, REVIEW_AFTER_SHOWN_MS);
+}
+
+function isBusy() {
+    const open = (el) => !!el && getComputedStyle(el).display !== 'none';
+    return open(document.querySelector('[class*="MapPreferences_menuContainer"]')) ||
+        open(document.getElementById('moremaps-settings-modal')) ||
+        open(document.getElementById('moremaps-panorama-window')) ||
+        open(document.getElementById('moremaps-zwift-panel'));
+}
+
+function isFirefox() {
+    return browser.runtime.getURL('').startsWith('moz-extension:');
+}
+
+function reviewUrl() {
+    const { REVIEW_URLS } = MoreMapsConfig;
+    return isFirefox() ? REVIEW_URLS.FIREFOX : REVIEW_URLS.CHROME;
+}
+
+function showReviewPrompt() {
+    // Under the Settings button on Strava's maps, or the map style dropdown on an activity.
+    const anchor = document.querySelector('[data-key="more-maps-settings"] button') ||
+        document.querySelector('select[class*="MapTypeControl--select"]');
+    if (!anchor || !isReviewDue()) return;
+    const firefox = isFirefox();
+    showPromptCard(anchor, {
+        icon: 'icons/icon.png',
+        title: STRINGS.UI.REVIEW_PROMPT_TITLE,
+        text: firefox ? STRINGS.UI.REVIEW_PROMPT_TEXT_FIREFOX : STRINGS.UI.REVIEW_PROMPT_TEXT_CHROME,
+        accept: STRINGS.UI.REVIEW_PROMPT_ACCEPT
+    }, (accepted) => {
+        localStorage.setItem(STORAGE_KEYS.REVIEW_PROMPTED, '1');
+        if (!accepted) return;
+        window.open(reviewUrl(), '_blank', 'noopener');
+    });
+}
+
+function showPromptCard(anchor, copy, onAnswer) {
     const card = document.createElement('div');
-    card.id = 'moremaps-zwift-prompt';
+    card.id = 'moremaps-prompt';
+    promptShown = true;
     // Absolute, so it scrolls along with the (long) activity page.
     const rect = anchor.getBoundingClientRect();
     const left = Math.max(16, Math.min(rect.left, window.innerWidth - ZWIFT_PANEL_WIDTH - 16)) + window.scrollX;
@@ -1057,7 +1143,7 @@ function showZwiftCard(anchor, copy, onAnswer) {
     const header = document.createElement('div');
     header.style.cssText = 'display:flex; align-items:center; gap:8px; margin-bottom:6px;';
     const logo = document.createElement('img');
-    logo.src = browser.runtime.getURL('icons/zwift.svg');
+    logo.src = browser.runtime.getURL(copy.icon || 'icons/zwift.svg');
     logo.style.cssText = 'width:20px; height:20px;';
     const title = document.createElement('div');
     title.textContent = copy.title;
@@ -1065,7 +1151,7 @@ function showZwiftCard(anchor, copy, onAnswer) {
     const close = document.createElement('button');
     close.type = 'button';
     close.textContent = '×';
-    close.setAttribute('aria-label', STRINGS.UI.ZWIFT_PROMPT_CLOSE);
+    close.setAttribute('aria-label', STRINGS.UI.PROMPT_CLOSE);
     close.style.cssText = 'border:none; background:none; font-size:20px; line-height:1; color:#999; cursor:pointer; padding:0 2px;';
     header.append(logo, title, close);
 
@@ -1077,7 +1163,7 @@ function showZwiftCard(anchor, copy, onAnswer) {
     actions.style.cssText = 'display:flex; gap:8px; justify-content:flex-end;';
     const dismiss = document.createElement('button');
     dismiss.type = 'button';
-    dismiss.textContent = STRINGS.UI.ZWIFT_PROMPT_DISMISS;
+    dismiss.textContent = STRINGS.UI.PROMPT_DISMISS;
     dismiss.style.cssText = 'border:none; background:none; font:inherit; font-size:13px; font-weight:600; color:#6d6d78; cursor:pointer; padding:8px 12px;';
     const accept = document.createElement('button');
     accept.type = 'button';
@@ -1425,6 +1511,35 @@ function injectSettingsModal() {
     closeBtn.style.cssText = `position:absolute; top:16px; right:16px; background:none; border:none; font-size:24px; cursor:pointer; color:#999; z-index:10001;`;
     closeBtn.addEventListener('click', (e) => { e.stopPropagation(); modal.style.display = 'none'; });
 
+    // The dialog's three sections (API keys, favorite map, Zwift), each under
+    // an icon and title, with a divider between them.
+    const SECTION_ICONS = {
+        key: '<path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/>',
+        star: '<path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01z"/>',
+        lock: '<rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>',
+        trash: '<path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6M10 11v6M14 11v6"/>',
+        // Zwift's logo (icons/zwift.svg) traced as an outline, in its own coordinates.
+        zwift: '<path d="M30.866 26.667h-4.49L42.565 0H6.615C2.961 0 0 2.985 0 6.667s2.962 6.666 6.615 6.666h4.469L.955 30.018S0 31.421 0 33.443C0 37.065 2.913 40 6.506 40h24.36c3.654 0 6.615-2.985 6.615-6.667 0-3.681-2.961-6.666-6.615-6.666"/>'
+    };
+    const ICON_FRAMES = { zwift: { viewBox: '-3 -3 48.6 46', strokeWidth: 4 } };
+    const lineIcon = (name, size) => {
+        const { viewBox = '0 0 24 24', strokeWidth = 2 } = ICON_FRAMES[name] || {};
+        return `<svg viewBox="${viewBox}" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="${strokeWidth}" stroke-linecap="round" stroke-linejoin="round" style="flex:none;">${SECTION_ICONS[name]}</svg>`;
+    };
+    const makeSection = (icon, titleText, forId, ...children) => {
+        const section = document.createElement('div');
+        section.style.cssText = 'padding:20px 0; border-top:1px solid #eee;';
+        const heading = document.createElement(forId ? 'label' : 'div');
+        if (forId) heading.htmlFor = forId;
+        heading.style.cssText = 'display:flex; align-items:center; gap:8px; margin-bottom:8px; font-weight:700; font-size:15px; color:#242428;';
+        heading.insertAdjacentHTML('beforeend', `<span style="display:flex; color:${ORANGE};">${lineIcon(icon, 16)}</span>`);
+        heading.append(titleText);
+        section.append(heading, ...children);
+        const last = children[children.length - 1];
+        if (last) last.style.marginBottom = '0';
+        return section;
+    };
+
     const createApiLink = (url, label = STRINGS.SETTINGS.GET_KEY) => {
         const a = document.createElement('a');
         a.href = url; a.target = '_blank';
@@ -1460,10 +1575,6 @@ function injectSettingsModal() {
     const tf = makeField(STRINGS.SETTINGS.TF_LABEL, STORAGE_KEYS.TF_KEY, STRINGS.SETTINGS.TF_PLACEHOLDER, createApiLink(STRINGS.SETTINGS.API_LINKS.TF));
 
     // Favorite map: applied automatically whenever a Strava map loads.
-    const favLabel = document.createElement('label');
-    favLabel.htmlFor = 'moremaps-favorite-map';
-    favLabel.style.cssText = 'display:block; margin:8px 0 4px; font-weight:600; text-align:left; font-size:13px; color:#333;';
-    favLabel.textContent = STRINGS.SETTINGS.FAVORITE_LABEL;
     const favExplainer = document.createElement('p');
     favExplainer.style.cssText = 'font-size:12px; color:#666; margin:0 0 8px 0; line-height:1.5;';
     favExplainer.textContent = STRINGS.SETTINGS.FAVORITE_EXPLAINER;
@@ -1473,9 +1584,6 @@ function injectSettingsModal() {
     fillFavoriteOptions(favSelect);
 
     // Zwift worlds (opt-in).
-    const zwiftLabel = document.createElement('div');
-    zwiftLabel.style.cssText = 'margin:8px 0 4px; font-weight:600; text-align:left; font-size:13px; color:#333;';
-    zwiftLabel.textContent = STRINGS.SETTINGS.ZWIFT_LABEL;
     const zwiftToggle = document.createElement('label');
     zwiftToggle.style.cssText = 'display:flex; align-items:center; gap:8px; font-size:13px; color:#333; cursor:pointer;';
     const zwiftCheckbox = document.createElement('input');
@@ -1490,8 +1598,9 @@ function injectSettingsModal() {
     zwiftExplainer.textContent = STRINGS.SETTINGS.ZWIFT_EXPLAINER;
 
     const storageInfo = document.createElement('div');
-    storageInfo.style.cssText = 'font-size:11px; color:#888; margin-bottom:24px; text-align:left;';
-    storageInfo.textContent = STRINGS.UI.API_KEYS_NOTICE;
+    storageInfo.style.cssText = 'display:flex; align-items:flex-start; gap:6px; font-size:11px; color:#888; line-height:1.5; text-align:left;';
+    storageInfo.innerHTML = `<span style="display:flex; padding-top:2px;">${lineIcon('lock', 12)}</span>`;
+    storageInfo.append(STRINGS.UI.API_KEYS_NOTICE);
 
     const saveBtn = document.createElement('button');
     saveBtn.style.cssText = 'width:100%; padding:12px; background:#fc4c02; color:white; border:none; border-radius:6px; font-weight:600; cursor:pointer; font-size:16px;';
@@ -1509,8 +1618,7 @@ function injectSettingsModal() {
     };
 
     const resetBtn = document.createElement('button');
-    resetBtn.style.cssText = 'width:100%; padding:8px; background:transparent; color:#999; border:none; font-weight:500; cursor:pointer; font-size:12px; margin-top:12px; text-decoration:underline;';
-    resetBtn.textContent = STRINGS.UI.RESET_BUTTON;
+    resetBtn.type = 'button';
     resetBtn.onclick = () => {
         if (confirm(STRINGS.UI.DELETE_DATA_CONFIRM)) {
             const keys = [];
@@ -1521,13 +1629,38 @@ function injectSettingsModal() {
     };
 
     content.appendChild(closeBtn); content.appendChild(headerWrapper);
-    content.appendChild(instructions); content.appendChild(apiKeysExplainer);
-    content.appendChild(mapy.label); content.appendChild(mapy.input);
-    content.appendChild(google.label); content.appendChild(google.input);
-    content.appendChild(tf.label); content.appendChild(tf.input);
-    content.appendChild(favLabel); content.appendChild(favExplainer); content.appendChild(favSelect);
-    content.appendChild(zwiftLabel); content.appendChild(zwiftToggle); content.appendChild(zwiftExplainer);
-    content.appendChild(storageInfo); content.appendChild(saveBtn); content.appendChild(resetBtn);
+    content.appendChild(instructions);
+    tf.input.style.marginBottom = '10px'; // keeps the storage notice with the keys
+    const apiSection = makeSection('key', STRINGS.SETTINGS.API_KEYS_HEADER, null, apiKeysExplainer,
+        mapy.label, mapy.input, google.label, google.input, tf.label, tf.input, storageInfo);
+    // The dialog's title already separates the first section.
+    apiSection.style.borderTop = 'none';
+    apiSection.style.paddingTop = '0';
+    content.appendChild(apiSection);
+    content.appendChild(makeSection('star', STRINGS.SETTINGS.FAVORITE_LABEL, 'moremaps-favorite-map', favExplainer, favSelect));
+    content.appendChild(makeSection('zwift', STRINGS.SETTINGS.ZWIFT_LABEL, null, zwiftToggle, zwiftExplainer));
+    // Footer: small actions under Save, kept quiet, all in one look: icon +
+    // small bold text, underlined on hover.
+    const footer = document.createElement('div');
+    footer.style.cssText = 'display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px 16px; margin-top:16px; padding-top:16px; border-top:1px solid #eee;';
+    const styleFooterAction = (el, icon, iconColor, color, label) => {
+        el.style.cssText = `display:inline-flex; align-items:center; gap:6px; padding:0; border:none; background:none; font:inherit; color:${color}; font-size:12px; font-weight:600; text-decoration:none; cursor:pointer;`;
+        el.innerHTML = `<span style="display:flex; color:${iconColor};">${lineIcon(icon, 14)}</span>`;
+        el.append(label);
+        el.addEventListener('mouseenter', () => { el.style.textDecoration = 'underline'; });
+        el.addEventListener('mouseleave', () => { el.style.textDecoration = 'none'; });
+    };
+    // A standing way to rate. Rating from here counts as answering the card,
+    // so that never shows afterwards.
+    const rateLink = document.createElement('a');
+    rateLink.href = reviewUrl(); rateLink.target = '_blank'; rateLink.rel = 'noopener';
+    styleFooterAction(rateLink, 'star', ORANGE, '#494950', isFirefox() ? STRINGS.SETTINGS.RATE_LINK_FIREFOX : STRINGS.SETTINGS.RATE_LINK_CHROME);
+    rateLink.addEventListener('click', () => localStorage.setItem(STORAGE_KEYS.REVIEW_PROMPTED, '1'));
+    styleFooterAction(resetBtn, 'trash', '#999', '#6d6d78', STRINGS.UI.RESET_BUTTON);
+    resetBtn.style.marginLeft = 'auto'; // the destructive action sits at the far end
+    footer.append(rateLink, resetBtn);
+
+    content.appendChild(saveBtn); content.appendChild(footer);
     modal.appendChild(content);
     modal.addEventListener('click', (e) => { if (e.target === modal) modal.style.display = 'none'; });
     document.body.appendChild(modal);
@@ -1543,7 +1676,7 @@ const observer = new MutationObserver(() => {
     createPanoramaButton();
     createSettingsButton();
     createZwiftButton();
-    maybeShowZwiftPrompt();
+    maybeShowPrompt();
     injectIntoActivitySelect();
     updateStylingBadge();
 });
@@ -1552,13 +1685,13 @@ function init() {
     if (!document.body) { requestAnimationFrame(init); return; }
     observer.observe(document.body, { childList: true, subtree: true });
     // The page may have settled before the answer arrives, so look again then.
-    checkZwiftPermission().then(maybeShowZwiftPrompt);
+    checkZwiftPermission().then(maybeShowPrompt);
     const menu = document.querySelector('[class*="MapPreferences_menuContainer"]');
     if (menu) injectIntoMenu(menu);
     createPanoramaButton();
     createSettingsButton();
     createZwiftButton();
-    maybeShowZwiftPrompt();
+    maybeShowPrompt();
     injectIntoActivitySelect();
 
     document.addEventListener('keydown', (e) => {
