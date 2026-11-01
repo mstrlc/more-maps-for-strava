@@ -1575,20 +1575,6 @@ function injectSettingsModal() {
     zwiftExplainer.style.cssText = 'font-size:12px; color:#666; margin:4px 0 16px 0; line-height:1.5;';
     zwiftExplainer.textContent = STRINGS.SETTINGS.ZWIFT_EXPLAINER;
 
-    // A standing way to rate, for anyone who'd rather not wait for the card.
-    // Using it counts as answering the card, so that never shows afterwards.
-    const rate = document.createElement('div');
-    rate.style.cssText = 'display:flex; align-items:center; gap:8px; flex-wrap:wrap; background:#fff5f2; border:1px solid #ffd9c9; border-radius:8px; padding:10px 14px; margin-bottom:16px; font-size:13px; color:#333;';
-    const rateText = document.createElement('span');
-    rateText.textContent = STRINGS.SETTINGS.RATE_TEXT;
-    rateText.style.fontWeight = '600';
-    const rateLink = createApiLink(reviewUrl(), isFirefox() ? STRINGS.SETTINGS.RATE_LINK_FIREFOX : STRINGS.SETTINGS.RATE_LINK_CHROME);
-    rateLink.rel = 'noopener';
-    rateLink.style.marginLeft = '0';
-    rateLink.style.fontSize = '12px';
-    rateLink.addEventListener('click', () => localStorage.setItem(STORAGE_KEYS.REVIEW_PROMPTED, '1'));
-    rate.append(rateText, rateLink);
-
     const storageInfo = document.createElement('div');
     storageInfo.style.cssText = 'font-size:11px; color:#888; margin-bottom:24px; text-align:left;';
     storageInfo.textContent = STRINGS.UI.API_KEYS_NOTICE;
@@ -1609,7 +1595,7 @@ function injectSettingsModal() {
     };
 
     const resetBtn = document.createElement('button');
-    resetBtn.style.cssText = 'width:100%; padding:8px; background:transparent; color:#999; border:none; font-weight:500; cursor:pointer; font-size:12px; margin-top:12px; text-decoration:underline;';
+    resetBtn.style.cssText = 'padding:0; background:transparent; color:#999; border:none; font:inherit; font-size:12px; font-weight:500; cursor:pointer; text-decoration:underline;';
     resetBtn.textContent = STRINGS.UI.RESET_BUTTON;
     resetBtn.onclick = () => {
         if (confirm(STRINGS.UI.DELETE_DATA_CONFIRM)) {
@@ -1627,8 +1613,21 @@ function injectSettingsModal() {
     content.appendChild(tf.label); content.appendChild(tf.input);
     content.appendChild(favLabel); content.appendChild(favExplainer); content.appendChild(favSelect);
     content.appendChild(zwiftLabel); content.appendChild(zwiftToggle); content.appendChild(zwiftExplainer);
-    content.appendChild(rate);
-    content.appendChild(storageInfo); content.appendChild(saveBtn); content.appendChild(resetBtn);
+    // Footer: a standing way to rate, and the destructive reset, both kept quiet.
+    // Rating from here counts as answering the card, so that never shows afterwards.
+    const footer = document.createElement('div');
+    footer.style.cssText = 'display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px 16px; margin-top:16px; padding-top:16px; border-top:1px solid #eee;';
+    const rateLink = document.createElement('a');
+    rateLink.href = reviewUrl(); rateLink.target = '_blank'; rateLink.rel = 'noopener';
+    rateLink.style.cssText = 'display:inline-flex; align-items:center; gap:6px; color:#494950; font-size:12px; font-weight:600; text-decoration:none;';
+    rateLink.innerHTML = `<svg viewBox="0 0 24 24" width="14" height="14" fill="${ORANGE}"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01z"/></svg>`;
+    rateLink.append(isFirefox() ? STRINGS.SETTINGS.RATE_LINK_FIREFOX : STRINGS.SETTINGS.RATE_LINK_CHROME);
+    rateLink.addEventListener('mouseenter', () => { rateLink.style.textDecoration = 'underline'; });
+    rateLink.addEventListener('mouseleave', () => { rateLink.style.textDecoration = 'none'; });
+    rateLink.addEventListener('click', () => localStorage.setItem(STORAGE_KEYS.REVIEW_PROMPTED, '1'));
+    footer.append(rateLink, resetBtn);
+
+    content.appendChild(storageInfo); content.appendChild(saveBtn); content.appendChild(footer);
     modal.appendChild(content);
     modal.addEventListener('click', (e) => { if (e.target === modal) modal.style.display = 'none'; });
     document.body.appendChild(modal);
