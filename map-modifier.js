@@ -133,9 +133,12 @@ window.addEventListener('message', (event) => {
     } else if (event.data.type === 'MOREMAPS_ACTIVE_MAP') {
         // inject.js picked the map itself (the Zwift map on a Zwift activity).
         activeMapId = event.data.mapType;
-        recordUsageDay();
         reflectActiveMapInActivitySelect();
         updateStylingBadge();
+    } else if (event.data.type === 'MOREMAPS_MAP_SHOWN') {
+        // One of our maps loaded fine, whether picked here or opened by inject.js.
+        recordUsageDay();
+        maybeAskForReview(event.data.mapType);
     }
 });
 
@@ -216,7 +219,6 @@ async function triggerMapSwitch(mapId) {
     localStorage.setItem(STORAGE_KEYS.ACTIVE_ID, mapId);
     window.postMessage({ type: 'MOREMAPS_MAP_SWITCH', mapType: mapId }, '*');
     updateStylingBadge();
-    recordUsageDay();
 }
 
 // Reset to Strava's own base map. Strava's native style button performs the
@@ -990,13 +992,15 @@ function setZwiftEnabled(enabled) {
 // turns on the Zwift features. On an activity recorded in Zwift, "Ridden in
 // Zwift" (under the map style dropdown) only shows that ride on Zwift's map,
 // for anyone, without turning the rest on. "Enjoying More Maps?" asks regular
-// users for a store rating. Each is asked once; any answer, closing it
-// included, is final. At most one card shows per page load.
+// users for a store rating, right after one of our maps has loaded fine.
+// Each is asked once; any answer, closing it included, is final. At most one
+// card shows per page load.
 const PROMPT_DELAY_MS = 1500;
 let promptScheduled = false;
+let promptShown = false;
 
 function maybeShowPrompt() {
-    if (promptScheduled || document.getElementById('moremaps-prompt')) return;
+    if (promptScheduled || promptShown) return;
     const settings = document.querySelector('[data-key="more-maps-settings"] button');
     if (settings && !MoreMapsConfig.isZwiftEnabled() && !localStorage.getItem(STORAGE_KEYS.ZWIFT_PROMPTED)) {
         schedule(showZwiftPrompt);
@@ -1008,10 +1012,6 @@ function maybeShowPrompt() {
     if (sel && sel.querySelector('optgroup[data-mm]') && zwiftPermissionKnown && MoreMapsConfig.isZwiftActivityPage() &&
         !MoreMapsConfig.zwiftImagesAllowed() && !localStorage.getItem(STORAGE_KEYS.ZWIFT_ACTIVITY_PROMPTED)) {
         schedule(showZwiftActivityPrompt);
-        return;
-    }
-    if (settings && isReviewDue()) {
-        schedule(showReviewPrompt);
     }
 
     function schedule(show) {
@@ -1082,12 +1082,36 @@ function isReviewDue() {
     return Date.parse(localDay()) - Date.parse(first) >= REVIEW_MIN_AGE_DAYS * DAY_MS;
 }
 
+// Give them a moment with the map first, then ask only if they're still on it
+// and not in the middle of something (a menu, settings, a panorama).
+const REVIEW_AFTER_SHOWN_MS = 3000;
+
+function maybeAskForReview(mapId) {
+    if (promptScheduled || promptShown || !isReviewDue()) return;
+    promptScheduled = true;
+    setTimeout(() => {
+        promptScheduled = false;
+        if (activeMapId !== mapId || document.hidden || isBusy()) return;
+        showReviewPrompt();
+    }, REVIEW_AFTER_SHOWN_MS);
+}
+
+function isBusy() {
+    const open = (el) => !!el && getComputedStyle(el).display !== 'none';
+    return open(document.querySelector('[class*="MapPreferences_menuContainer"]')) ||
+        open(document.getElementById('moremaps-settings-modal')) ||
+        open(document.getElementById('moremaps-panorama-window')) ||
+        open(document.getElementById('moremaps-zwift-panel'));
+}
+
 function isFirefox() {
     return browser.runtime.getURL('').startsWith('moz-extension:');
 }
 
 function showReviewPrompt() {
-    const anchor = document.querySelector('[data-key="more-maps-settings"] button');
+    // Under the Settings button on Strava's maps, or the map style dropdown on an activity.
+    const anchor = document.querySelector('[data-key="more-maps-settings"] button') ||
+        document.querySelector('select[class*="MapTypeControl--select"]');
     if (!anchor || !isReviewDue()) return;
     const firefox = isFirefox();
     showPromptCard(anchor, {
@@ -1106,6 +1130,7 @@ function showReviewPrompt() {
 function showPromptCard(anchor, copy, onAnswer) {
     const card = document.createElement('div');
     card.id = 'moremaps-prompt';
+    promptShown = true;
     // Absolute, so it scrolls along with the (long) activity page.
     const rect = anchor.getBoundingClientRect();
     const left = Math.max(16, Math.min(rect.left, window.innerWidth - ZWIFT_PANEL_WIDTH - 16)) + window.scrollX;
@@ -1651,8 +1676,6 @@ function init() {
     observer.observe(document.body, { childList: true, subtree: true });
     // The page may have settled before the answer arrives, so look again then.
     checkZwiftPermission().then(maybeShowPrompt);
-    // inject.js opens the favorite map by itself, without a switch from here.
-    if (MoreMapsConfig.getFavoriteMap() !== 'strava-default') recordUsageDay();
     const menu = document.querySelector('[class*="MapPreferences_menuContainer"]');
     if (menu) injectIntoMenu(menu);
     createPanoramaButton();

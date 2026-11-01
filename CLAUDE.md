@@ -75,6 +75,7 @@ All cross-context communication uses `window.postMessage` with a `type` field:
 | `MOREMAPS_ZWIFT_WHERE` | content→page | Ask for the camera position (Zwift panel) |
 | `MOREMAPS_ZWIFT_HERE` | page→content | Camera position, to mark the world in view |
 | `MOREMAPS_ACTIVE_MAP` | page→content | inject.js chose the map itself (Zwift map on a Zwift activity) |
+| `MOREMAPS_MAP_SHOWN` | page→content | One of our maps finished loading without failing tiles (usage day, review card) |
 | `INIT_PANO` | page→sandbox | Initialize panorama at coordinates |
 | `PANO_YAW` | sandbox→page | Camera yaw changed |
 | `PANO_POS` | sandbox→page | User navigated to new position |

@@ -74,6 +74,10 @@
     // map doesn't flash first. Reveal shortly after the swap (the engine needs
     // a moment to fetch the new tiles), or after a timeout as a safety net.
     const REVEAL_DELAY_MS = 300;
+    // A switch counts as working once its tiles settle with at most one failed
+    // tile request per MOSTLY_LOADED_RATIO that succeeded.
+    const SHOWN_CHECK_DELAY_MS = 1000;
+    const MOSTLY_LOADED_RATIO = 4;
     const COVER_TIMEOUT_MS = 8000;
     // A freshly created engine isn't initialised yet: switching its map type
     // right away can break it (white canvas until reload). Wait until it has
@@ -431,6 +435,10 @@
     // from its send() — before any recolouring delay — until loadend.
     const tileRequests = { inFlight: 0, lastActivity: 0 };
 
+    // How our provider's tile requests turned out since the last switch, to
+    // tell a map that works from one that fails (e.g. a bad API key).
+    const providerTiles = { prefix: null, ok: 0, failed: 0 };
+
     // filterFor(url) returns the filter to apply to that request, or null to
     // let it through untouched. rewriteUrl(url) returns a URL to request
     // instead, or null.
@@ -457,16 +465,21 @@
             return abort.apply(this, arguments);
         };
         proto.send = function (body) {
+            const mm = this._mm;
+            const url = mm && String(mm.args[1]);
             if (this.responseType === 'arraybuffer') {
                 tileRequests.inFlight++;
                 tileRequests.lastActivity = Date.now();
                 this.addEventListener('loadend', () => {
                     tileRequests.inFlight = Math.max(0, tileRequests.inFlight - 1);
                     tileRequests.lastActivity = Date.now();
+                    // Status 0 is an abort (the view moved on), not a failure.
+                    if (providerTiles.prefix && url && url.startsWith(providerTiles.prefix)) {
+                        if (this.status >= 200 && this.status < 300) providerTiles.ok++;
+                        else if (this.status >= 400) providerTiles.failed++;
+                    }
                 }, { once: true });
             }
-            const mm = this._mm;
-            const url = mm && String(mm.args[1]);
             const filter = mm && filterFor(url);
             if (!filter) return send.apply(this, arguments);
 
@@ -1015,10 +1028,25 @@
                     this.cachedUrl = url;
                     this.syncTerrainCache(url, cleared);
                     this.uncoverMap(REVEAL_DELAY_MS);
+                    this.reportWhenShown(mapType, url);
                 });
             } catch (e) {
                 console.error('More Maps: error applying tiles', e);
             }
+        }
+
+        // Tell the content script once the switched-to map has loaded fine, so
+        // it can count the day as a More Maps day (and maybe ask for a rating).
+        // Tiles served from the engine's cache make no requests, which counts too.
+        reportWhenShown(mapType, url) {
+            providerTiles.prefix = url.split('{')[0];
+            providerTiles.ok = 0;
+            providerTiles.failed = 0;
+            setTimeout(() => this.whenTilesIdle(() => {
+                if (this.desiredUrl !== url) return; // switched away meanwhile
+                if (providerTiles.ok < providerTiles.failed * MOSTLY_LOADED_RATIO) return;
+                window.postMessage({ type: 'MOREMAPS_MAP_SHOWN', mapType }, '*');
+            }), SHOWN_CHECK_DELAY_MS);
         }
 
         // The carrier map type is a hybrid: Strava draws its own vector roads,
