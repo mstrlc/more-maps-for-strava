@@ -67,7 +67,7 @@ npm run build
 
 The build is a plain file copy into `dist/`, with no bundler. Load `dist/` as an unpacked extension (or `dist/manifest.json` in Firefox) as described under [Install](#install), and reload it there after each build. `npm run zip` builds and packages `moremaps.zip`.
 
-There are no automated tests. Releases are published to both stores by GitHub Actions when a `vX.Y.Z` tag is pushed; [CLAUDE.md](CLAUDE.md) has the full branch and release workflow.
+There are no automated tests. Releases are published to both stores by GitHub Actions when a `vX.Y.Z` tag is pushed; [CLAUDE.md](CLAUDE.md) has the full branch and release workflow, and [CONTRIBUTING.md](CONTRIBUTING.md) covers branch names, commits and the pull request format.
 
 ## Usage
 
