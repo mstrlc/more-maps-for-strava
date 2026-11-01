@@ -916,8 +916,13 @@
 
         // Only tiles from the provider currently on the carrier go through the
         // recolouring path (and its cache); everything else is left alone.
+        // The sliders only exist in the route planner's map popover, so maps
+        // without them (the activity page and its Map Style <select>) show
+        // tiles as they are rather than with a filter that can't be changed there.
         filterFor(url) {
             if (!this.desiredUrl || !url.startsWith(this.desiredUrl.split('{')[0])) return null;
+            if (/^\/activities\/\d+/.test(location.pathname) ||
+                document.querySelector('select[class*="MapTypeControl--select"]')) return null;
             return this.tileFilter || MoreMapsConfig.TILE_FILTER_DEFAULTS;
         }
 
