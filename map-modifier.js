@@ -1108,6 +1108,11 @@ function isFirefox() {
     return browser.runtime.getURL('').startsWith('moz-extension:');
 }
 
+function reviewUrl() {
+    const { REVIEW_URLS } = MoreMapsConfig;
+    return isFirefox() ? REVIEW_URLS.FIREFOX : REVIEW_URLS.CHROME;
+}
+
 function showReviewPrompt() {
     // Under the Settings button on Strava's maps, or the map style dropdown on an activity.
     const anchor = document.querySelector('[data-key="more-maps-settings"] button') ||
@@ -1122,8 +1127,7 @@ function showReviewPrompt() {
     }, (accepted) => {
         localStorage.setItem(STORAGE_KEYS.REVIEW_PROMPTED, '1');
         if (!accepted) return;
-        const { REVIEW_URLS } = MoreMapsConfig;
-        window.open(firefox ? REVIEW_URLS.FIREFOX : REVIEW_URLS.CHROME, '_blank', 'noopener');
+        window.open(reviewUrl(), '_blank', 'noopener');
     });
 }
 
@@ -1571,6 +1575,20 @@ function injectSettingsModal() {
     zwiftExplainer.style.cssText = 'font-size:12px; color:#666; margin:4px 0 16px 0; line-height:1.5;';
     zwiftExplainer.textContent = STRINGS.SETTINGS.ZWIFT_EXPLAINER;
 
+    // A standing way to rate, for anyone who'd rather not wait for the card.
+    // Using it counts as answering the card, so that never shows afterwards.
+    const rate = document.createElement('div');
+    rate.style.cssText = 'display:flex; align-items:center; gap:8px; flex-wrap:wrap; background:#fff5f2; border:1px solid #ffd9c9; border-radius:8px; padding:10px 14px; margin-bottom:16px; font-size:13px; color:#333;';
+    const rateText = document.createElement('span');
+    rateText.textContent = STRINGS.SETTINGS.RATE_TEXT;
+    rateText.style.fontWeight = '600';
+    const rateLink = createApiLink(reviewUrl(), isFirefox() ? STRINGS.SETTINGS.RATE_LINK_FIREFOX : STRINGS.SETTINGS.RATE_LINK_CHROME);
+    rateLink.rel = 'noopener';
+    rateLink.style.marginLeft = '0';
+    rateLink.style.fontSize = '12px';
+    rateLink.addEventListener('click', () => localStorage.setItem(STORAGE_KEYS.REVIEW_PROMPTED, '1'));
+    rate.append(rateText, rateLink);
+
     const storageInfo = document.createElement('div');
     storageInfo.style.cssText = 'font-size:11px; color:#888; margin-bottom:24px; text-align:left;';
     storageInfo.textContent = STRINGS.UI.API_KEYS_NOTICE;
@@ -1609,6 +1627,7 @@ function injectSettingsModal() {
     content.appendChild(tf.label); content.appendChild(tf.input);
     content.appendChild(favLabel); content.appendChild(favExplainer); content.appendChild(favSelect);
     content.appendChild(zwiftLabel); content.appendChild(zwiftToggle); content.appendChild(zwiftExplainer);
+    content.appendChild(rate);
     content.appendChild(storageInfo); content.appendChild(saveBtn); content.appendChild(resetBtn);
     modal.appendChild(content);
     modal.addEventListener('click', (e) => { if (e.target === modal) modal.style.display = 'none'; });
