@@ -14,6 +14,8 @@ When the user types `/release`, invoke the Skill tool with `skill: "release"` be
 2. Commit changes with conventional commits (`feat:`, `fix:`, `refactor:`, etc.)
 3. Merge to `main` (fast-forward preferred)
 
+PR titles and descriptions follow [CONTRIBUTING.md](CONTRIBUTING.md#pull-requests) (the GitHub template is `.github/pull_request_template.md`).
+
 ### Releases
 1. Branch off `main`: `git checkout -b release/v1.2.3`
 2. Bump version in both `manifest.json` and `package.json`
