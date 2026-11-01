@@ -73,6 +73,8 @@ if (typeof MoreMapsConfig !== 'undefined') {
             ZWIFT_LABEL: 'Zwift worlds',
             ZWIFT_TOGGLE: 'Show Zwift worlds',
             ZWIFT_EXPLAINER: 'Adds a Zwift Worlds button next to this one and a Zwift section to the map style menu.',
+            RATE_LINK_CHROME: 'Rate on Chrome Web Store',
+            RATE_LINK_FIREFOX: 'Rate on Firefox Add-ons',
             API_LINKS: {
                 MAPY: 'https://developer.mapy.com/account/projects',
                 GOOGLE: 'https://console.cloud.google.com/google/maps-apis/credentials',

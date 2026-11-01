@@ -1108,6 +1108,11 @@ function isFirefox() {
     return browser.runtime.getURL('').startsWith('moz-extension:');
 }
 
+function reviewUrl() {
+    const { REVIEW_URLS } = MoreMapsConfig;
+    return isFirefox() ? REVIEW_URLS.FIREFOX : REVIEW_URLS.CHROME;
+}
+
 function showReviewPrompt() {
     // Under the Settings button on Strava's maps, or the map style dropdown on an activity.
     const anchor = document.querySelector('[data-key="more-maps-settings"] button') ||
@@ -1122,8 +1127,7 @@ function showReviewPrompt() {
     }, (accepted) => {
         localStorage.setItem(STORAGE_KEYS.REVIEW_PROMPTED, '1');
         if (!accepted) return;
-        const { REVIEW_URLS } = MoreMapsConfig;
-        window.open(firefox ? REVIEW_URLS.FIREFOX : REVIEW_URLS.CHROME, '_blank', 'noopener');
+        window.open(reviewUrl(), '_blank', 'noopener');
     });
 }
 
@@ -1646,9 +1650,15 @@ function injectSettingsModal() {
         el.addEventListener('mouseenter', () => { el.style.textDecoration = 'underline'; });
         el.addEventListener('mouseleave', () => { el.style.textDecoration = 'none'; });
     };
+    // A standing way to rate. Rating from here counts as answering the card,
+    // so that never shows afterwards.
+    const rateLink = document.createElement('a');
+    rateLink.href = reviewUrl(); rateLink.target = '_blank'; rateLink.rel = 'noopener';
+    styleFooterAction(rateLink, 'star', ORANGE, '#494950', isFirefox() ? STRINGS.SETTINGS.RATE_LINK_FIREFOX : STRINGS.SETTINGS.RATE_LINK_CHROME);
+    rateLink.addEventListener('click', () => localStorage.setItem(STORAGE_KEYS.REVIEW_PROMPTED, '1'));
     styleFooterAction(resetBtn, 'trash', '#999', '#6d6d78', STRINGS.UI.RESET_BUTTON);
     resetBtn.style.marginLeft = 'auto'; // the destructive action sits at the far end
-    footer.append(resetBtn);
+    footer.append(rateLink, resetBtn);
 
     content.appendChild(saveBtn); content.appendChild(footer);
     modal.appendChild(content);
