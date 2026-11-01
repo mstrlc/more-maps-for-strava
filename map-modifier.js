@@ -640,10 +640,12 @@ function updateStylingBadge() {
     const show = region && activeMapId !== 'strava-default' && !MoreMapsConfig.isNeutralTileFilter(filter);
     if (!show) { if (badge) badge.remove(); return; }
 
-    const styleGroup = region.querySelector('[class*="ControlButton_controlGroup"]');
-    const styleBtn = styleGroup && styleGroup.querySelector('button');
-    if (!styleBtn) return;
-    if (!badge) badge = createStylingBadge(styleBtn);
+    // While the popover is open it replaces the map-style button (and covers
+    // where the badge sits), so step aside until it closes.
+    const styleBtn = findMapStyleButton(region);
+    if (!styleBtn) { if (badge) badge.remove(); return; }
+    const styleGroup = styleBtn.closest('[class*="ControlButton_controlGroup"]') || styleBtn;
+    if (!badge) badge = createStylingBadge();
     // Sit to the right of the map-style button, level with it. The region is a
     // column Strava lays out, so float beside it rather than joining it.
     if (getComputedStyle(region).position === 'static') region.style.position = 'relative';
@@ -663,7 +665,16 @@ function updateStylingBadge() {
     if (text.textContent !== label) text.textContent = label;
 }
 
-function createStylingBadge(styleBtn) {
+// Strava's "Change map style" button. Its label is localised, so pick it as
+// the corner's control button that isn't the 2D/3D toggle. Strava re-creates
+// it on every popover open/close, so look it up fresh rather than holding it.
+function findMapStyleButton(region) {
+    if (!region || region.querySelector('[class*="MapPreferences_menuContainer"]')) return null;
+    return Array.from(region.querySelectorAll('[class*="ControlButton_controlGroup"] button'))
+        .find(b => b.id !== 'mre-2d-3d-toggle' && !b.matches('[data-testid="mre-camera-view-type-button"]')) || null;
+}
+
+function createStylingBadge() {
     const badge = document.createElement('div');
     badge.id = 'moremaps-styling-badge';
     badge.style.cssText = 'position:absolute; display:flex; align-items:stretch; overflow:hidden; background:#fff; border-radius:4px; box-shadow:0 0 0 2px rgba(0,0,0,0.1); font-family:"Boathouse","Noto Sans","Segoe UI",sans-serif; font-size:12px; color:#242428; white-space:nowrap; z-index:1;';
@@ -677,7 +688,10 @@ function createStylingBadge(styleBtn) {
     const text = document.createElement('span');
     text.dataset.mmValues = '1';
     values.append(dot, text);
-    values.addEventListener('click', () => styleBtn.isConnected && styleBtn.click());
+    values.addEventListener('click', () => {
+        const styleBtn = findMapStyleButton(badge.parentElement);
+        if (styleBtn) styleBtn.click();
+    });
 
     const reset = document.createElement('button');
     reset.type = 'button';
