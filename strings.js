@@ -128,7 +128,7 @@ if (typeof MoreMapsConfig !== 'undefined') {
             },
             PANORAMA: {
                 CLOSE_TOOLTIP: 'Zavřít panorama',
-                PROVIDER_SELECT: 'Zdroj panoramat',
+                PROVIDER_SELECT: 'Zdroj panorama',
                 NO_MAPY_HERE: 'Tady Mapy.com panorama nemají.',
                 NO_GOOGLE_HERE: 'Tady Google Street View není.',
                 LOAD_ERROR: 'Panorama se nepodařilo načíst'
