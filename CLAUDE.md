@@ -18,7 +18,7 @@ PR titles and descriptions follow [CONTRIBUTING.md](CONTRIBUTING.md#pull-request
 
 ### Releases
 1. Branch off `main`: `git checkout -b release/v1.2.3`
-2. Bump version in both `manifest.json` and `package.json`
+2. Bump version in both `src/manifest.json` and `package.json`
 3. Commit: `git commit -m "release: v1.2.3"`
 4. Merge to `main` (fast-forward)
 5. Tag and push — this triggers the GitHub Actions release workflow:
@@ -45,6 +45,8 @@ There are no tests. Load the extension manually to test:
 ## Architecture
 
 This is a **Manifest V3 browser extension** that injects custom map layers and a panorama mode into Strava's route builder and heatmap pages (`*://*.strava.com/*`).
+
+Everything that ships lives in `src/`; the build copies it to `dist/` unchanged, so the paths below are relative to `src/`.
 
 ### Script execution model
 
