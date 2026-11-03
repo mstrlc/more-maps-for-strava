@@ -38,7 +38,7 @@ Use [Conventional Commits](https://www.conventionalcommits.org/): `feat:`, `fix:
 fix: skip tile brightness/saturation where the sliders aren't shown
 ```
 
-Don't bump the version in `manifest.json` or `package.json`; that happens in the release branch.
+Don't bump the version in `src/manifest.json` or `package.json`; that happens in the release branch.
 
 ## Pull requests
 

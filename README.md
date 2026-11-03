@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="icons/icon.png" width="96" height="96" alt="More Maps for Strava icon">
+  <img src="src/icons/icon.png" width="96" height="96" alt="More Maps for Strava icon">
   <h1>More Maps for Strava</h1>
   <p>
     <a href="https://chromewebstore.google.com/detail/more-maps-for-strava/adpgjdeigiekdjnjionhhblgfpmkionl">Chrome Web Store</a>
@@ -90,24 +90,25 @@ Panorama mode works on the heatmap and route builder, not on activity pages.
 ## Project layout
 
 ```
-manifest.json            Manifest V3 extension manifest
-constants.js             Map options, Strava selectors and storage keys (window.MoreMapsConfig)
-strings.js               User-visible text
-map-modifier.js          Content script: injects the page scripts, the menu entries,
+src/                     Everything that ships in the extension; the build copies it to dist/
+  manifest.json          Manifest V3 extension manifest
+  constants.js           Map options, Strava selectors and storage keys (window.MoreMapsConfig)
+  strings.js             User-visible text
+  map-modifier.js        Content script: injects the page scripts, the menu entries,
                          the panorama button, the settings modal and the Zwift worlds panel
-inject.js                Page script: finds Strava's map engine and swaps its base tiles,
+  inject.js              Page script: finds Strava's map engine and swaps its base tiles,
                          recolours tiles for the brightness and saturation sliders,
                          and cuts Zwift's world maps into tiles
-background.js            Downloads Zwift's world maps (cdn.zwift.com allows no page access)
-zwift-permission.html    Asks for the optional cdn.zwift.com permission (with zwift-permission.js)
-panorama.js              Page script: panorama mode, the floating window and map marker
-panorama.html            Sandboxed page hosting the panorama viewers
-panorama-sandbox.js      Loads Mapy.com Panorama or Google Street View inside the sandbox
-panorama-mapy-sdk.js     Bundled Mapy.com panorama SDK
-browser-polyfill.js      webextension-polyfill, so one codebase runs in Chrome and Firefox
-assets/                  Map thumbnails and store badges
-icons/                   Extension icons
-store/                   Store listing descriptions and screenshots
+  background.js          Downloads Zwift's world maps (cdn.zwift.com allows no page access)
+  zwift-permission.html  Asks for the optional cdn.zwift.com permission (with zwift-permission.js)
+  panorama.js            Page script: panorama mode, the floating window and map marker
+  panorama.html          Sandboxed page hosting the panorama viewers
+  panorama-sandbox.js    Loads Mapy.com Panorama or Google Street View inside the sandbox
+  panorama-mapy-sdk.js   Bundled Mapy.com panorama SDK
+  browser-polyfill.js    webextension-polyfill, so one codebase runs in Chrome and Firefox
+  assets/                Map thumbnails
+  icons/                 Extension icons
+store/                   Store listing descriptions, screenshots and badges
 .github/workflows/       Release workflow publishing to the Chrome Web Store and Firefox Add-ons
 ```
 
