@@ -3,7 +3,14 @@ const state = {
     apiKey: null,
     pano: null,
     lastYaw: 0,
-    apiLoaded: { google: false, mapy: false }
+    apiLoaded: { google: false, mapy: false },
+    // UI text and language, sent by panorama.js with INIT_PANO.
+    lang: 'en',
+    text: {
+        noMapy: 'No Mapy.com panorama found here.',
+        noGoogle: 'No Google Street View found here.',
+        loadError: 'Error loading panorama'
+    }
 };
 
 const isFirefox = navigator.userAgent.includes('Firefox');
@@ -35,6 +42,8 @@ window.addEventListener('message', async (event) => {
     if (!data || !data.type) return;
 
     if (data.type === 'INIT_PANO') {
+        if (data.text) state.text = data.text;
+        state.lang = data.lang || 'en';
         await openPanorama(data.provider, data.apiKey, data.lon, data.lat, data.yaw);
     } else if (data.type === 'RESIZE') {
         if (state.pano && state.provider === 'google' && !isFirefox) {
@@ -86,7 +95,7 @@ async function openPanorama(provider, apiKey, lon, lat, yaw) {
         }
     } catch (e) {
         console.error(e);
-        container.innerHTML = `<div class="error-msg">${e.message || 'Error loading panorama'}</div>`;
+        container.innerHTML = `<div class="error-msg">${e.message || state.text.loadError}</div>`;
     }
 }
 
@@ -138,7 +147,7 @@ function renderGoogle(lon, lat, yaw) {
                 window.parent.postMessage({ type: 'PANO_POS', lon: pos.lng(), lat: pos.lat() }, '*');
             });
         } else {
-            container.innerHTML = `<div class="error-msg">No Google Street View found here.</div>`;
+            container.innerHTML = `<div class="error-msg">${state.text.noGoogle}</div>`;
         }
     });
 }
@@ -150,7 +159,7 @@ function renderMapy(lon, lat, yaw) {
         parent: container,
         lon, lat,
         radius: 100,
-        lang: 'en',
+        lang: state.lang,
         yaw: yaw,
         fov: Math.PI / 2,
         showNavigation: true,
@@ -159,7 +168,7 @@ function renderMapy(lon, lat, yaw) {
         state.pano = pano;
 
         if (pano.errorCode && pano.errorCode !== 'NONE') {
-            container.innerHTML = `<div class="error-msg">No Mapy.com panorama found here.</div>`;
+            container.innerHTML = `<div class="error-msg">${state.text.noMapy}</div>`;
             return;
         }
 

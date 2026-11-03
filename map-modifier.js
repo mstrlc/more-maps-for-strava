@@ -891,7 +891,7 @@ function createPanoramaButton() {
     // Provider switcher (Mapy.com / Google), like the original.
     const selector = document.createElement('select');
     selector.id = 'moremaps-pano-provider';
-    selector.title = 'Panorama provider';
+    selector.title = STRINGS.PANORAMA.PROVIDER_SELECT;
     selector.style.cssText = 'box-sizing:border-box; height:100%; border:none; border-left:1px solid #e6e6e6; background:transparent; font-size:11px; font-weight:700; padding:0 2px 0 6px; cursor:pointer; outline:none; color:#333; appearance:auto; -webkit-appearance:menulist;';
     [['mapy', STRINGS.SETTINGS.PROVIDER_MAPY], ['google', 'Google']].forEach(([v, l]) => {
         const o = document.createElement('option'); o.value = v; o.textContent = l; selector.appendChild(o);
@@ -1683,6 +1683,7 @@ const observer = new MutationObserver(() => {
 
 function init() {
     if (!document.body) { requestAnimationFrame(init); return; }
+    MoreMapsConfig.localize();
     observer.observe(document.body, { childList: true, subtree: true });
     // The page may have settled before the answer arrives, so look again then.
     checkZwiftPermission().then(maybeShowPrompt);

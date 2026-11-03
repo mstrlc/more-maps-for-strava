@@ -426,7 +426,12 @@
 
             // A message posted before panorama.html has loaded is lost (the
             // panorama stays black), so a fresh frame gets it on its load event.
-            const init = { type: 'INIT_PANO', provider, apiKey: key, lon, lat, yaw: state.lastYaw };
+            const init = {
+                type: 'INIT_PANO', provider, apiKey: key, lon, lat, yaw: state.lastYaw,
+                // The sandbox can't load strings.js, so it gets its text here.
+                lang: MoreMapsConfig.language === 'cs' || MoreMapsConfig.language === 'sk' ? MoreMapsConfig.language : 'en',
+                text: { noMapy: STRINGS.PANORAMA.NO_MAPY_HERE, noGoogle: STRINGS.PANORAMA.NO_GOOGLE_HERE, loadError: STRINGS.PANORAMA.LOAD_ERROR }
+            };
             if (state.iframe && state.iframeReady) {
                 state.iframe.contentWindow.postMessage(init, '*');
             } else {
