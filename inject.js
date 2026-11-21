@@ -934,9 +934,13 @@
         // tiles as they are rather than with a filter that can't be changed there.
         filterFor(url) {
             if (!this.desiredUrl || !url.startsWith(this.desiredUrl.split('{')[0])) return null;
-            if (/^\/activities\/\d+/.test(location.pathname) ||
-                document.querySelector('select[class*="MapTypeControl--select"]')) return null;
-            return this.tileFilter || MoreMapsConfig.TILE_FILTER_DEFAULTS;
+            // Zwift tiles have no server behind them: this path is what draws
+            // them, so they always take it (unfiltered where there are no sliders).
+            const neutral = MoreMapsConfig.TILE_FILTER_DEFAULTS;
+            const slidersShown = !/^\/activities\/\d+/.test(location.pathname) &&
+                !document.querySelector('select[class*="MapTypeControl--select"]');
+            if (slidersShown) return this.tileFilter || neutral;
+            return ZWIFT_TILE_RE.test(url) ? neutral : null;
         }
 
         setTileFilter(filter, refresh) {
